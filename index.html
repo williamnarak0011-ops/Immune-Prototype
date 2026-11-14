@@ -6,7 +6,7 @@
 <title>Immune Colony</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Chakra+Petch:wght@700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Chakra+Petch:wght@700&family=Noto+Sans+Thai:wght@400;700&display=swap">
 <style>
   /* One-screen game: the canvas is scaled to fit the window, keeping 1280x760. */
   :root {
@@ -431,8 +431,8 @@ canvas.height = HEIGHT * DPR;
 const ctx = canvas.getContext("2d");
 ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
 
-const FAM = '"Atkinson Hyperlegible", "Segoe UI", Arial, sans-serif';
-const DISP = '"Chakra Petch", "Segoe UI", Arial, sans-serif';
+const FAM = '"Atkinson Hyperlegible", "Noto Sans Thai", "Segoe UI", Arial, sans-serif';
+const DISP = '"Chakra Petch", "Noto Sans Thai", "Segoe UI", Arial, sans-serif';
 const mkFont = (size, bold, fam = FAM) => ({ css: `${bold ? 700 : 400} ${size}px ${fam}`, h: Math.round(size * 1.25), size });
 
 // Drawing primitives with pygame-like semantics (width 0 = filled).
@@ -1704,6 +1704,63 @@ const TUTORIAL_STEPS = [
   { card: "order", last: true },
 ];
 
+// ------------------------------- LANGUAGE -------------------------------
+// UI text is written in English in the code; tr() swaps in the Thai version when
+// the player picks Thai in Settings. Strings missing from TH stay in English.
+const LANG_KEY = "immune_colony_lang";
+const LANGUAGES = [["en", "English"], ["th", "ไทย (Thai)"]];
+const TH = {
+  "Run a colony of living cells. Fight a virus the way your body really does.":
+    "บริหารอาณานิคมของเซลล์ที่มีชีวิต ต่อสู้กับไวรัสแบบที่ร่างกายของคุณทำจริง ๆ",
+  "Play": "เล่น", "Learn": "เรียนรู้", "Tutorial": "บทเรียน", "Settings": "ตั้งค่า",
+  "SETTINGS": "ตั้งค่า",
+  "Difficulty": "ความยาก", "Terms": "คำศัพท์", "Terminology": "คำศัพท์",
+  "Medical": "การแพทย์", "Simple": "ง่าย",
+  "Easy": "ง่าย", "Normal": "ปกติ", "Hard": "ยาก",
+  "Language": "ภาษา",
+  "Best played with a mouse and keyboard.": "เล่นได้ดีที่สุดด้วยเมาส์และคีย์บอร์ด",
+  "Cell art drawn in code - roles based on notes from the book \"Immune\"":
+    "ภาพเซลล์วาดด้วยโค้ด - บทบาทอ้างอิงจากหนังสือ \"Immune\"",
+  "Simple names for beginners, real immunology terms for learning.":
+    "ชื่อง่าย ๆ สำหรับมือใหม่ หรือศัพท์ภูมิคุ้มกันวิทยาจริงสำหรับการเรียนรู้",
+  "Applies when you start a new game.": "มีผลเมื่อเริ่มเกมใหม่",
+  "Changes the language of menus and buttons.": "เปลี่ยนภาษาของเมนูและปุ่มต่าง ๆ",
+  "Back": "กลับ", "< Back": "< กลับ", "< Prev": "< ก่อนหน้า", "Next >": "ถัดไป >",
+  "PAUSED": "หยุดชั่วคราว", "Resume": "เล่นต่อ", "Restart": "เริ่มใหม่", "Main Menu": "เมนูหลัก",
+  "ENCYCLOPEDIA": "สารานุกรม", "How to Play": "วิธีเล่น", "Read >": "อ่าน >",
+  "COLONY": "อาณานิคม", "INNATE": "ภูมิคุ้มกันโดยกำเนิด", "ADAPTIVE": "ภูมิคุ้มกันแบบจำเพาะ", "OTHER": "อื่น ๆ",
+  "IN THE GAME": "ในเกม", "REAL BIOLOGY": "ชีววิทยาจริง",
+  "CANCER TOOK OVER": "มะเร็งยึดครองแล้ว", "THE LYMPH NODE FELL": "ต่อมน้ำเหลืองถูกทำลาย",
+  "Waves survived": "จำนวนระลอกที่รอด", "Virus particles destroyed": "อนุภาคไวรัสที่ทำลาย",
+  "Cells infected": "เซลล์ที่ติดเชื้อ", "Infected cells killed before bursting": "เซลล์ติดเชื้อที่ถูกกำจัดก่อนแตก",
+  "Cells that burst": "เซลล์ที่แตก", "Strains in immune memory": "สายพันธุ์ในความจำภูมิคุ้มกัน",
+  "Time": "เวลา", "Play Again": "เล่นอีกครั้ง",
+  "Back to the colony": "กลับสู่อาณานิคม", "NEW UNLOCKED": "ปลดล็อกใหม่",
+  "nothing": "ยังไม่มี",
+};
+const TH_FMT = {
+  learnCount: n => `${n} รายการ - คลิกเพื่ออ่าน  คำศัพท์: `,
+  waveFell: w => `ไวรัสบุกทำลายต่อมน้ำเหลืองของคุณในระลอกที่ ${w}`,
+  cleared: w => `กำจัดการติดเชื้อครั้งที่ ${w} สำเร็จ`,
+  ap: n => `แต้มปรับตัว: ${n}`,
+  memory: s => "ความจำตอนนี้ครอบคลุม: " + s,
+  strain: k => `สายพันธุ์ ${k}`,
+  next: (a, n) => `สายพันธุ์ถัดไปที่คาดไว้: ${a}  -  เข้ามาจาก: ${n}`,
+};
+let LANG = "en";
+try { if (localStorage.getItem(LANG_KEY) === "th") LANG = "th"; } catch (_) { /* storage blocked */ }
+function setLang(code) {
+  LANG = code;
+  document.documentElement.lang = code;
+  try { localStorage.setItem(LANG_KEY, code); } catch (_) { /* storage blocked */ }
+}
+document.documentElement.lang = LANG;
+/** Translate a fixed UI string. */
+const tr = s => (LANG === "th" && TH[s] !== undefined ? TH[s] : s);
+/** Pick the Thai template when Thai is on, else the English one. */
+const trf = (key, en, ...a) => (LANG === "th" ? TH_FMT[key](...a) : en);
+const TH_SEG = typeof Intl !== "undefined" && Intl.Segmenter ? new Intl.Segmenter("th", { granularity: "word" }) : null;
+
 // -------------------------------- INPUT ---------------------------------
 const input = { mouse: [0, 0], keys: new Set() };
 
@@ -1719,6 +1776,7 @@ class Game {
 
     this.medical = false;
     this.difficulty = "Normal";
+    this.lang_open = false;   // Settings language dropdown expanded?
     this.state = "MENU";
     this.prev_state = "MENU";
     this.has_game = false;
@@ -1755,6 +1813,16 @@ class Game {
   measure(s, font) { ctx.font = font.css; return ctx.measureText(s).width; }
 
   wrap(s, font, maxW) {
+    if (TH_SEG && /[\u0E00-\u0E7F]/.test(s)) {
+      const lines = [];
+      let cur = "";
+      for (const { segment } of TH_SEG.segment(s)) {
+        if (this.measure((cur + segment).trim(), font) <= maxW) cur += segment;
+        else { if (cur.trim()) lines.push(cur.trim()); cur = segment.trimStart(); }
+      }
+      if (cur.trim()) lines.push(cur.trim());
+      return lines;
+    }
     const words = s.split(" "), lines = [];
     let cur = "";
     for (const w of words) {
@@ -2737,7 +2805,10 @@ class Game {
     if (key === "m") this.medical = !this.medical;
     const st = this.state;
     if (st === "HOWTO" || st === "OPTIONS") {
-      if (key === "escape") this.state = this.prev_state;
+      if (key === "escape") {
+        if (this.lang_open) this.lang_open = false;
+        else this.state = this.prev_state;
+      }
       return;
     }
     if (st === "LEARN") {
@@ -3549,7 +3620,7 @@ class Game {
     const bob = Math.sin(this.time * 1.5) * 4;
     this.text("IMMUNE COLONY", this.f_title, [25, 12, 30], WIDTH / 2 + 4, 104 + bob, "c");
     this.text("IMMUNE COLONY", this.f_title, WHITE, WIDTH / 2, 100 + bob, "c");
-    this.text("Run a colony of living cells. Fight a virus the way your body really does.",
+    this.text(tr("Run a colony of living cells. Fight a virus the way your body really does."),
               this.f, [200, 190, 215], WIDTH / 2, 192, "c");
     const bx = WIDTH / 2 - 140, by = 260, bw = 280, bh = 54;
     const items = [["Play", () => this.play(), "primary"],
@@ -3557,11 +3628,11 @@ class Game {
                    ["Tutorial", () => this.startTutorial(), this.tut_done ? "normal" : "on"],
                    ["Settings", () => this.go("OPTIONS"), "normal"]];
     items.forEach(([label, action, style], i) =>
-      this.button([bx, by + i * 66, bw, bh], label, action, style, true, this.f_med));
-    this.text(`Difficulty: ${this.difficulty}    Terms: ${this.medical ? "Medical" : "Simple"}`,
+      this.button([bx, by + i * 66, bw, bh], tr(label), action, style, true, this.f_med));
+    this.text(`${tr("Difficulty")}: ${tr(this.difficulty)}    ${tr("Terms")}: ${tr(this.medical ? "Medical" : "Simple")}`,
               this.f_small, GREY, WIDTH / 2, HEIGHT - 70, "c");
-    this.text("Best played with a mouse and keyboard.", this.f_small, GREY, WIDTH / 2, HEIGHT - 50, "c");
-    this.text("Cell art drawn in code - roles based on notes from the book \"Immune\"",
+    this.text(tr("Best played with a mouse and keyboard."), this.f_small, GREY, WIDTH / 2, HEIGHT - 50, "c");
+    this.text(tr("Cell art drawn in code - roles based on notes from the book \"Immune\""),
               this.f_small, [110, 102, 124], WIDTH / 2, HEIGHT - 30, "c");
   }
   // =========================== drawing: Learn ===========================
@@ -3611,13 +3682,13 @@ class Game {
     this.drawMenuBg(dt);
     const r = new Rect(40, 24, WIDTH - 80, HEIGHT - 48);
     this.panel(r);
-    this.text("ENCYCLOPEDIA", this.f_big, WHITE, r.centerx, r.y + 14, "c");
+    this.text(tr("ENCYCLOPEDIA"), this.f_big, WHITE, r.centerx, r.y + 14, "c");
     if (this.learn_entry) { this.drawLearnEntry(this.learn_entry, r); return; }
     LEARN_TABS.forEach((tab, i) => {
-      this.button([r.x + 30 + i * 170, r.y + 74, 158, 42], tab.toUpperCase(), () => { this.learn_tab = tab; },
+      this.button([r.x + 30 + i * 170, r.y + 74, 158, 42], tr(tab.toUpperCase()), () => { this.learn_tab = tab; },
                   this.learn_tab === tab ? "on" : "normal", true, this.f_bold);
     });
-    this.button([r.right - 210, r.y + 74, 180, 42], "How to Play", () => this.go("HOWTO"), "primary", true, this.f_bold);
+    this.button([r.right - 210, r.y + 74, 180, 42], tr("How to Play"), () => this.go("HOWTO"), "primary", true, this.f_bold);
     const items = ENCYCLOPEDIA.filter(e => e.tab === this.learn_tab);
     const cols = 4, gap = 16, tw = Math.floor((r.w - 60 - gap * (cols - 1)) / cols), th = 150;
     items.forEach((e, i) => {
@@ -3630,19 +3701,20 @@ class Game {
       let y = tr.y + 34;
       for (const ln of this.wrap(e.def.simple, this.f_bold, w).slice(0, 2)) { this.text(ln, this.f_bold, WHITE, tx, y); y += 21; }
       for (const ln of this.wrap(e.def.medical, this.f_small, w).slice(0, 3)) { this.text(ln, this.f_small, [170, 162, 186], tx, y); y += 17; }
-      this.text("Read >", this.f_small, hover ? YELLOW : CYAN, tx, tr.bottom - 26);
+      this.text(tr("Read >"), this.f_small, hover ? YELLOW : CYAN, tx, tr.bottom - 26);
       this.click_targets.push([tr, () => { this.learn_entry = e; }]);
     });
-    this.text(`${items.length} entries - click one to learn about it.  Terms: ${this.medical ? "Medical" : "Simple"} [M]`,
+    this.text(trf("learnCount", `${items.length} entries - click one to learn about it.  Terms: `, items.length) +
+              `${tr(this.medical ? "Medical" : "Simple")} [M]`,
               this.f_small, GREY, r.centerx, r.bottom - 92, "c");
-    this.button([r.centerx - 100, r.bottom - 66, 200, 48], "Back", () => { this.state = "MENU"; }, "normal", true, this.f_med);
+    this.button([r.centerx - 100, r.bottom - 66, 200, 48], tr("Back"), () => { this.state = "MENU"; }, "normal", true, this.f_med);
   }
   drawLearnEntry(e, r) {
     const box = new Rect(r.x + 30, r.y + 76, 330, 420);
     drawRect(ctx, [24, 18, 30], box, 0, 14);
     drawRect(ctx, PANEL_EDGE, box, 2, 14);
     this.drawLearnIcon(e, box.centerx, box.y + 170, 300);
-    this.text(e.tab.toUpperCase(), this.f_small, GREY, box.centerx, box.y + 14, "c");
+    this.text(tr(e.tab.toUpperCase()), this.f_small, GREY, box.centerx, box.y + 14, "c");
     if (e.icon === "sprite" && OUTFIT[e.key]) {
       this.wrap("Uniform: " + OUTFIT[e.key], this.f_small, box.w - 30).slice(0, 2).forEach((ln, i) =>
         this.text(ln, this.f_small, YELLOW, box.centerx, box.bottom - 70 + i * 18, "c"));
@@ -3651,7 +3723,7 @@ class Game {
     let y = r.y + 80;
     this.text(e.def.simple, this.f_big, WHITE, x, y); y += 50;
     this.text(e.def.medical, this.f_med, [180, 172, 196], x, y); y += 40;
-    this.text("IN THE GAME", this.f_bold, YELLOW, x, y); y += 24;
+    this.text(tr("IN THE GAME"), this.f_bold, YELLOW, x, y); y += 24;
     const bk = e.build || (BUILDINGS[e.key] ? e.key : null);
     let game = this.learnGameText(e);
     if (bk && e.build) game += ` Made by: ${this.name(BUILDINGS[bk])}.`;
@@ -3659,14 +3731,14 @@ class Game {
       game += UNLOCK_AT[bk] ? ` Unlocks after wave ${UNLOCK_AT[bk]}.` : " Available from the start.";
     for (const ln of this.wrap(game, this.f, w)) { this.text(ln, this.f, [215, 210, 225], x, y); y += 22; }
     y += 14;
-    this.text("REAL BIOLOGY", this.f_bold, CYAN, x, y); y += 26;
+    this.text(tr("REAL BIOLOGY"), this.f_bold, CYAN, x, y); y += 26;
     for (const b of e.bio) {
       const lines = this.wrap(b, this.f, w - 22);
       drawCircle(ctx, CYAN, [x + 6, y + 10], 3);
       for (const ln of lines) { this.text(ln, this.f, [200, 230, 240], x + 20, y); y += 22; }
       y += 6;
     }
-    this.button([r.centerx - 100, r.bottom - 66, 200, 48], "< Back", () => { this.learn_entry = null; }, "primary", true, this.f_med);
+    this.button([r.centerx - 100, r.bottom - 66, 200, 48], tr("< Back"), () => { this.learn_entry = null; }, "primary", true, this.f_med);
   }
   drawHowto(dt) {
     if (this.prev_state === "PAUSED") { this.drawGame(); this.dim(200); }
@@ -3682,51 +3754,84 @@ class Game {
       this.click_targets.push([new Rect(p[0] - 10, p[1] - 10, 20, 20), () => { this.howto_page = i; }]);
     }
     const by = r.bottom - 62;
-    this.button([r.x + 40, by, 160, 46], "< Prev", () => this.page(-1), "normal", this.howto_page > 0, this.f_med);
-    this.button([r.right - 200, by, 160, 46], "Next >", () => this.page(1), "normal", this.howto_page < n - 1, this.f_med);
+    this.button([r.x + 40, by, 160, 46], tr("< Prev"), () => this.page(-1), "normal", this.howto_page > 0, this.f_med);
+    this.button([r.right - 200, by, 160, 46], tr("Next >"), () => this.page(1), "normal", this.howto_page < n - 1, this.f_med);
     const back = () => { this.state = this.prev_state; };
-    this.button([r.centerx - 100, by, 200, 46], "Back", back, "primary", true, this.f_med);
+    this.button([r.centerx - 100, by, 200, 46], tr("Back"), back, "primary", true, this.f_med);
   }
   page(d) { this.howto_page = clamp(this.howto_page + d, 0, HOWTO_CARDS.length - 1); }
   drawOptions(dt) {
     if (this.prev_state === "PAUSED") { this.drawGame(); this.dim(200); }
     else this.drawMenuBg(dt);
-    const r = new Rect(WIDTH / 2 - 260, 140, 520, 420);
+    const r = new Rect(WIDTH / 2 - 260, 110, 520, 520);
     this.panel(r);
-    this.text("SETTINGS", this.f_big, WHITE, r.centerx, r.y + 20, "c");
-    this.button([r.x + 60, r.y + 100, r.w - 120, 52], `Terminology: ${this.medical ? "Medical" : "Simple"}  [M]`,
+    this.text(tr("SETTINGS"), this.f_big, WHITE, r.centerx, r.y + 20, "c");
+    this.button([r.x + 60, r.y + 100, r.w - 120, 52],
+                `${tr("Terminology")}: ${tr(this.medical ? "Medical" : "Simple")}  [M]`,
                 () => { this.medical = !this.medical; }, "normal", true, this.f_med);
-    this.text("Simple names for beginners, real immunology terms for learning.",
+    this.text(tr("Simple names for beginners, real immunology terms for learning."),
               this.f_small, GREY, r.centerx, r.y + 158, "c");
     const order = Object.keys(DIFFICULTY);
     const nxt = order[(order.indexOf(this.difficulty) + 1) % order.length];
-    this.button([r.x + 60, r.y + 200, r.w - 120, 52], `Difficulty: ${this.difficulty}`,
+    this.button([r.x + 60, r.y + 200, r.w - 120, 52], `${tr("Difficulty")}: ${tr(this.difficulty)}`,
                 () => { this.difficulty = nxt; }, "normal", true, this.f_med);
-    this.text("Applies when you start a new game.", this.f_small, GREY, r.centerx, r.y + 258, "c");
-    this.button([r.centerx - 100, r.bottom - 76, 200, 50], "Back", () => { this.state = this.prev_state; },
+    this.text(tr("Applies when you start a new game."), this.f_small, GREY, r.centerx, r.y + 258, "c");
+    // Language: label on the left, dropdown on the right
+    const dd = new Rect(r.x + 230, r.y + 300, r.w - 290, 52);
+    this.text(`${tr("Language")}:`, this.f_med, WHITE, r.x + 60, dd.centery - Math.floor(this.f_med.h / 2));
+    this.text(tr("Changes the language of menus and buttons."), this.f_small, GREY, r.centerx, r.y + 358, "c");
+    this.button([r.centerx - 100, r.bottom - 76, 200, 50], tr("Back"), () => { this.lang_open = false; this.state = this.prev_state; },
                 "primary", true, this.f_med);
+    this.drawLangDropdown(dd);
+  }
+  /** Language dropdown. Drawn last so its open list sits over everything else. */
+  drawLangDropdown(dd) {
+    const cur = LANGUAGES.find(([c]) => c === LANG);
+    const hover = dd.collidepoint(...input.mouse);
+    drawRect(ctx, hover || this.lang_open ? [70, 64, 86] : PANEL_LIGHT, dd, 0, 8);
+    drawRect(ctx, hover || this.lang_open ? WHITE : PANEL_EDGE, dd, 2, 8);
+    this.text(cur[1], this.f_med, WHITE, dd.x + 16, dd.centery - Math.floor(this.f_med.h / 2));
+    // caret: points down when closed, up when open
+    const cx = dd.right - 24, cy = dd.centery, k = this.lang_open ? -1 : 1;
+    drawPoly(ctx, WHITE, [[cx - 7, cy - 3 * k], [cx + 7, cy - 3 * k], [cx, cy + 5 * k]]);
+    this.click_targets.push([dd, () => { this.lang_open = !this.lang_open; }]);
+    if (!this.lang_open) return;
+    // clicking anywhere outside the open list closes it without triggering what is underneath
+    this.click_targets.push([new Rect(0, 0, WIDTH, HEIGHT), () => { this.lang_open = false; }]);
+    const ih = 46, list = new Rect(dd.x, dd.bottom + 4, dd.w, LANGUAGES.length * ih);
+    drawRect(ctx, [24, 19, 30], list, 0, 8);
+    drawRect(ctx, WHITE, list, 2, 8);
+    LANGUAGES.forEach(([code, label], i) => {
+      const ir = new Rect(list.x + 2, list.y + 2 + i * ih, list.w - 4, ih - 4);
+      const on = code === LANG, hov = ir.collidepoint(...input.mouse);
+      if (hov || on) drawRect(ctx, hov ? [70, 64, 86] : [60, 104, 140], ir, 0, 6);
+      this.text(label, this.f_med, WHITE, ir.x + 14, ir.centery - Math.floor(this.f_med.h / 2));
+      if (on) this.text("✓", this.f_med, GREEN, ir.right - 30, ir.centery - Math.floor(this.f_med.h / 2));
+      this.click_targets.push([ir, () => { setLang(code); this.lang_open = false; }]);
+    });
   }
   drawPause() {
     this.drawGame();
     this.dim();
     const r = new Rect(WIDTH / 2 - 170, 170, 340, 340);
     this.panel(r);
-    this.text("PAUSED", this.f_big, WHITE, r.centerx, r.y + 20, "c");
+    this.text(tr("PAUSED"), this.f_big, WHITE, r.centerx, r.y + 20, "c");
     const items = [["Resume", () => { this.state = "PLAYING"; }, "primary"],
                    ["Restart", () => this.newGame(), "normal"],
                    ["Settings", () => this.go("OPTIONS"), "normal"],
                    ["Main Menu", () => { this.state = "MENU"; }, "normal"]];
     items.forEach(([label, action, style], i) =>
-      this.button([r.x + 40, r.y + 90 + i * 60, r.w - 80, 48], label, action, style, true, this.f_med));
+      this.button([r.x + 40, r.y + 90 + i * 60, r.w - 80, 48], tr(label), action, style, true, this.f_med));
   }
   drawAdapt() {
     this.drawGame();
     this.dim(200);
-    this.text(`INFECTION ${this.wave} CLEARED`, this.f_big, GREEN, WIDTH / 2, 36, "c");
-    this.text(`Adaptation Points: ${Math.trunc(this.ap)}`, this.f_med, CYAN, WIDTH / 2, 88, "c");
+    this.text(trf("cleared", `INFECTION ${this.wave} CLEARED`, this.wave), this.f_big, GREEN, WIDTH / 2, 36, "c");
+    this.text(trf("ap", `Adaptation Points: ${Math.trunc(this.ap)}`, Math.trunc(this.ap)), this.f_med, CYAN, WIDTH / 2, 88, "c");
     if (this.contraction_note) this.text(this.contraction_note, this.f_small, [200, 230, 200], WIDTH / 2, 120, "c");
-    const mem = [...this.antigens].filter(([, v]) => v.state === "memory").map(([k]) => `Strain ${k}`);
-    this.text("Memory now covers: " + (mem.length ? mem.join(", ") : "nothing"), this.f_small, GREEN, WIDTH / 2, 140, "c");
+    const mem = [...this.antigens].filter(([, v]) => v.state === "memory").map(([k]) => trf("strain", `Strain ${k}`, k));
+    const memTxt = mem.length ? mem.join(", ") : tr("nothing");
+    this.text(trf("memory", "Memory now covers: " + memTxt, memTxt), this.f_small, GREEN, WIDTH / 2, 140, "c");
     const cols = 3, w = 340, h = 130, gap = 20;
     const sx = Math.floor((WIDTH - (cols * w + (cols - 1) * gap)) / 2);
     this.upgrade_options.forEach((opt, i) => {
@@ -3754,14 +3859,15 @@ class Game {
         const d = BUILDINGS[k];
         if (d.unit || k === "helper") drawCellSprite(ctx, d.unit || "helper", br.x + 32, br.y + 30, 14, { t: this.time, phase: i });
         else this.scIcon(k, br.x + 32, br.y + 28, 40);
-        this.text("NEW UNLOCKED", this.f_small, GREEN, br.x + 62, br.y + 8);
+        this.text(tr("NEW UNLOCKED"), this.f_small, GREEN, br.x + 62, br.y + 8);
         this.text(this.name(d), this.f_bold, WHITE, br.x + 62, br.y + 26);
       });
     }
     const names = this.next_entries.map(i => this.entries[i].name).join(", ");
-    this.text(`Expected next strain: ${this.next_strain.antigen}  -  entering from: ${names}`,
+    this.text(trf("next", `Expected next strain: ${this.next_strain.antigen}  -  entering from: ${names}`,
+                  this.next_strain.antigen, names),
               this.f_small, ORANGE, WIDTH / 2, HEIGHT - 110, "c");
-    this.button([WIDTH / 2 - 130, HEIGHT - 84, 260, 54], "Back to the colony", () => { this.state = "PLAYING"; },
+    this.button([WIDTH / 2 - 130, HEIGHT - 84, 260, 54], tr("Back to the colony"), () => { this.state = "PLAYING"; },
                 "primary", true, this.f_med);
   }
   drawEnd() {
@@ -3772,7 +3878,7 @@ class Game {
     this.panel(r);
     let top = r.y + 84;
     if (cancer) {
-      this.text("CANCER TOOK OVER", this.f_big, [235, 90, 140], r.centerx, r.y + 24, "c");
+      this.text(tr("CANCER TOOK OVER"), this.f_big, [235, 90, 140], r.centerx, r.y + 24, "c");
       const msg = "Some of your own cells mutated and began dividing out of control. They hid their " +
         "ID cards from your SWAT cells, wore out your immune cells and stole the blood's sugar. " +
         "No colony can win this one - in real life the immune system destroys many early cancers, " +
@@ -3780,8 +3886,8 @@ class Game {
       this.wrap(msg, this.f, r.w - 80).forEach((ln, i) => this.text(ln, this.f, WHITE, r.centerx, r.y + 78 + i * 22, "c"));
       top = r.y + 78 + this.wrap(msg, this.f, r.w - 80).length * 22 + 14;
     } else {
-      this.text("THE LYMPH NODE FELL", this.f_big, RED, r.centerx, r.y + 24, "c");
-      this.text(`The virus overwhelmed your lymph node during wave ${this.wave}.`, this.f, WHITE, r.centerx, r.y + 84, "c");
+      this.text(tr("THE LYMPH NODE FELL"), this.f_big, RED, r.centerx, r.y + 24, "c");
+      this.text(trf("waveFell", `The virus overwhelmed your lymph node during wave ${this.wave}.`, this.wave), this.f, WHITE, r.centerx, r.y + 84, "c");
       top = r.y + 124;
     }
     const secs = Math.trunc(this.stats.time);
@@ -3794,11 +3900,11 @@ class Game {
                   ["Strains in immune memory", String(mem)],
                   ["Time", `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, "0")}`]];
     rows.forEach(([k, v], i) => {
-      this.text(k, this.f, GREY, r.x + 70, top + i * 30);
+      this.text(tr(k), this.f, GREY, r.x + 70, top + i * 30);
       this.text(v, this.f_bold, WHITE, r.right - 70, top + i * 30, "r");
     });
-    this.button([r.x + 60, r.bottom - 76, 200, 50], "Play Again", () => this.newGame(), "primary", true, this.f_med);
-    this.button([r.right - 260, r.bottom - 76, 200, 50], "Main Menu", () => { this.has_game = false; this.state = "MENU"; },
+    this.button([r.x + 60, r.bottom - 76, 200, 50], tr("Play Again"), () => this.newGame(), "primary", true, this.f_med);
+    this.button([r.right - 260, r.bottom - 76, 200, 50], tr("Main Menu"), () => { this.has_game = false; this.state = "MENU"; },
                 "normal", true, this.f_med);
   }
 
