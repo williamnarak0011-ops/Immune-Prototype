@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Immune Colony</title>
+<title>Play BIO</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Chakra+Petch:wght@700&family=Noto+Sans+Thai:wght@400;700&display=swap">
@@ -43,11 +43,11 @@
 </style>
 </head>
 <body>
-<canvas id="game" width="1280" height="760" tabindex="0" aria-label="Immune Colony game"></canvas>
+<canvas id="game" width="1280" height="760" tabindex="0" aria-label="Play BIO game"></canvas>
 <script>
 "use strict";
 // =========================================================================
-// Immune Colony - browser version (ported from the pygame prototype v4)
+// Play BIO (Immune Colony) - browser version (ported from the pygame prototype v4)
 // =========================================================================
 
 // ------------------------------- CONFIG ---------------------------------
@@ -4160,8 +4160,8 @@ class Game {
   drawMenu(dt) {
     this.drawMenuBg(dt);
     const bob = Math.sin(this.time * 1.5) * 4;
-    this.text("IMMUNE COLONY", this.f_title, [25, 12, 30], WIDTH / 2 + 4, 104 + bob, "c");
-    this.text("IMMUNE COLONY", this.f_title, WHITE, WIDTH / 2, 100 + bob, "c");
+    this.text("Play BIO", this.f_title, [25, 12, 30], WIDTH / 2 + 4, 104 + bob, "c");
+    this.text("Play BIO", this.f_title, WHITE, WIDTH / 2, 100 + bob, "c");
     this.text(tr("Run a colony of living cells. Fight a virus the way your body really does."),
               this.f, [200, 190, 215], WIDTH / 2, 192, "c");
     const bx = WIDTH / 2 - 140, by = 260, bw = 280, bh = 54;
