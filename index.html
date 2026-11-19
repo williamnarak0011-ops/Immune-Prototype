@@ -351,7 +351,7 @@ const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 const darker = (c, f = 0.6) => [Math.floor(c[0] * f), Math.floor(c[1] * f), Math.floor(c[2] * f)];
 const lerpCol = (a, b, t) => [0, 1, 2].map(i => Math.floor(a[i] + (b[i] - a[i]) * t));
 const css = (c, a) => a === undefined ? `rgb(${c[0]},${c[1]},${c[2]})` : `rgba(${c[0]},${c[1]},${c[2]},${a})`;
-const nm = (d, medical) => medical ? d.medical : d.simple;
+const nm = (d, medical) => medical ? d.medical : tr(d.simple);
 const sgn = v => (v > 0) - (v < 0);
 const fmtSigned = (v, n) => (v >= 0 ? "+" : "") + v.toFixed(n);
 
@@ -431,8 +431,8 @@ canvas.height = HEIGHT * DPR;
 const ctx = canvas.getContext("2d");
 ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
 
-const FAM = '"Atkinson Hyperlegible", "Noto Sans Thai", "Segoe UI", Arial, sans-serif';
-const DISP = '"Chakra Petch", "Noto Sans Thai", "Segoe UI", Arial, sans-serif';
+const FAM = '"Atkinson Hyperlegible", "Noto Sans Thai", "Leelawadee UI", "Tahoma", "Segoe UI", Arial, sans-serif';
+const DISP = '"Chakra Petch", "Noto Sans Thai", "Leelawadee UI", "Tahoma", "Segoe UI", Arial, sans-serif';
 const mkFont = (size, bold, fam = FAM) => ({ css: `${bold ? 700 : 400} ${size}px ${fam}`, h: Math.round(size * 1.25), size });
 
 // Drawing primitives with pygame-like semantics (width 0 = filled).
@@ -1724,7 +1724,6 @@ const TH = {
   "Simple names for beginners, real immunology terms for learning.":
     "ชื่อง่าย ๆ สำหรับมือใหม่ หรือศัพท์ภูมิคุ้มกันวิทยาจริงสำหรับการเรียนรู้",
   "Applies when you start a new game.": "มีผลเมื่อเริ่มเกมใหม่",
-  "Changes the language of menus and buttons.": "เปลี่ยนภาษาของเมนูและปุ่มต่าง ๆ",
   "Back": "กลับ", "< Back": "< กลับ", "< Prev": "< ก่อนหน้า", "Next >": "ถัดไป >",
   "PAUSED": "หยุดชั่วคราว", "Resume": "เล่นต่อ", "Restart": "เริ่มใหม่", "Main Menu": "เมนูหลัก",
   "ENCYCLOPEDIA": "สารานุกรม", "How to Play": "วิธีเล่น", "Read >": "อ่าน >",
@@ -1745,21 +1744,562 @@ const TH_FMT = {
   ap: n => `แต้มปรับตัว: ${n}`,
   memory: s => "ความจำตอนนี้ครอบคลุม: " + s,
   strain: k => `สายพันธุ์ ${k}`,
-  next: (a, n) => `สายพันธุ์ถัดไปที่คาดไว้: ${a}  -  เข้ามาจาก: ${n}`,
+  next: (a, n) => `สายพันธุ์ถัดไปที่คาดไว้: ${a}  -  เข้ามาจาก: ${tr(n)}`,
 };
 let LANG = "en";
 try { if (localStorage.getItem(LANG_KEY) === "th") LANG = "th"; } catch (_) { /* storage blocked */ }
 function setLang(code) {
   LANG = code;
   document.documentElement.lang = code;
+  TH_CACHE.clear();
   try { localStorage.setItem(LANG_KEY, code); } catch (_) { /* storage blocked */ }
 }
 document.documentElement.lang = LANG;
 /** Translate a fixed UI string. */
-const tr = s => (LANG === "th" && TH[s] !== undefined ? TH[s] : s);
 /** Pick the Thai template when Thai is on, else the English one. */
 const trf = (key, en, ...a) => (LANG === "th" ? TH_FMT[key](...a) : en);
 const TH_SEG = typeof Intl !== "undefined" && Intl.Segmenter ? new Intl.Segmenter("th", { granularity: "word" }) : null;
+
+// ===================== THAI TRANSLATION LAYER =====================
+// ---------- Thai: messages that contain numbers or names ----------
+// Each rule: [pattern, Thai template]. $1..$9 are the captured parts, translated on their own.
+Object.assign(TH, {
+  " Available from the start.": " ใช้ได้ตั้งแต่เริ่ม",
+});
+const TH_RULES = [
+  [/^Growing a worker costs (.+)\.$/, "การเพาะเซลล์ช่างต้องใช้ $1"],
+  [/^(.+) infected! It stopped working and is making virus\.$/, "$1 ติดเชื้อ! หยุดทำงานและกำลังผลิตไวรัส"],
+  [/^An infected cell burst, releasing (\d+) new virus particles!$/, "เซลล์ติดเชื้อแตก ปล่อยอนุภาคไวรัสใหม่ $1 อนุภาค!"],
+  [/^Apoptosis: the cell broke into bubbles that trap the virus\. (.+)s must eat them before they leak!$/, "อะพอพโทซิส: เซลล์แตกเป็นฟองที่กักไวรัสไว้ $1 ต้องกินฟองเหล่านี้ก่อนที่ไวรัสจะรั่ว!"],
+  [/^(.+)s are careless - they can hurt your own cells\.$/, "$1 สะเพร่า - อาจทำร้ายเซลล์ของคุณเอง"],
+  [/^(.+) brought Strain (\S+) to the lymph node\. T & B cells activating \(~(\d+)s\)(.*)\.$/, "$1 นำสายพันธุ์ $2 มาที่ต่อมน้ำเหลือง เซลล์ T และ B กำลังถูกกระตุ้น (~$3 วินาที)$4"],
+  [/^Memory cells recognise Strain (\S+)! Fast secondary response\.$/, "เซลล์ความจำจำสายพันธุ์ $1 ได้! ตอบสนองครั้งที่สองอย่างรวดเร็ว"],
+  [/^Adaptive response ACTIVE vs Strain (\S+): CD8 T cells and antibodies now target it\.$/, "ภูมิคุ้มกันแบบจำเพาะทำงานแล้วต่อสายพันธุ์ $1: เซลล์ CD8 T และแอนติบอดีกำลังโจมตีมัน"],
+  [/^WAVE (\d+): Strain (\S+) \((\d+) particles\) entering from (.+)!$/, "ระลอกที่ $1: สายพันธุ์ $2 ($3 อนุภาค) เข้ามาจาก $4!"],
+  [/^Called early: \+(\d+) Adaptation Points\.$/, "เรียกก่อนเวลา: +$1 แต้มปรับตัว"],
+  [/^Regulatory T cells calmed things down: (\d+) SWAT and Antibody cells retired now the infection is gone\. Memory cells stay on watch\.$/, "เซลล์ Regulatory T ทำให้สงบลง: เซลล์ SWAT และแอนติบอดี $1 ตัวเกษียณแล้วเพราะการติดเชื้อหมดไป เซลล์ความจำยังเฝ้าระวังต่อ"],
+  [/^New unlocked: (.+)!$/, "ปลดล็อกใหม่: $1!"],
+  [/^Vaccinate vs Strain (\S+)$/, "ฉีดวัคซีนต่อสายพันธุ์ $1"],
+  [/^Blood glucose ran out! .*Liver Lobule\.$/, "กลูโคสในเลือดหมด! เซลล์สร้าง ATP ของตัวเองไม่ได้และกำลังอดอยาก - สร้างเส้นเลือดฝอยหรือโรงผลิตน้ำตาล"],
+  [/^Infected (.+) burst open and released virus!$/, "$1 ที่ติดเชื้อแตกออกและปล่อยไวรัส!"],
+  [/^(.+) unlocks after wave (\d+)\.$/, "$1 ปลดล็อกหลังระลอกที่ $2"],
+  [/^ Unlocks after wave (\d+)\.$/, " ปลดล็อกหลังระลอกที่ $1"],
+  [/^ Made by: (.+)\.$/, " สร้างจาก: $1"],
+  // HUD + panels
+  [/^(\d+) tissue {2}(\d+) immune$/, "$1 เนื้อเยื่อ  $2 ภูมิคุ้มกัน"],
+  [/^PRACTICE: (\d+) virus$/, "ฝึกซ้อม: ไวรัส $1"],
+  [/^Wave (\d+): (\d+) virus, (\d+) infected$/, "ระลอก $1: ไวรัส $2, ติดเชื้อ $3"],
+  [/^Wave (\d+)$/, "ระลอก $1"],
+  [/^After wave (\d+)$/, "หลังระลอก $1"],
+  [/^(Core|Lymph node) (\d+)\/(\d+)$/, "$1 $2/$3"],
+  [/^Rogue cells: (\d+)$/, "เซลล์เกเร: $1"],
+  [/^Strain (\S+)( \(drifted\)| \(NEW - shift\))?$/, "สายพันธุ์ $1$2"],
+  [/^Adaptive: activating, (\d+)s( \(no Helper T: slow\))?$/, "แบบจำเพาะ: กำลังกระตุ้น $1 วินาที$2"],
+  [/^Immune memory: (.*)$/, "ความจำภูมิคุ้มกัน: $1"],
+  [/^Next virus enters from: (.+)$/, "ไวรัสถัดไปเข้ามาจาก: $1"],
+  [/^Uniform: (.+)$/, "ชุด: $1"],
+  [/^Cost: (.+)$/, "ราคา: $1"],
+  [/^INFECTED by Strain (\S+) - (\d+)%$/, "ติดเชื้อสายพันธุ์ $1 - $2%"],
+  [/^INFECTED - will burst in (\d+)s$/, "ติดเชื้อ - จะแตกใน $1 วินาที"],
+  [/^Building (.+)$/, "กำลังสร้าง $1"],
+  [/^Repairing (.+)$/, "กำลังซ่อม $1"],
+  [/^Blueprint - (\d+)% built \((\d+) workers?\)$/, "แบบแปลน - สร้างแล้ว $1% (เซลล์ช่าง $2 ตัว)"],
+  [/^Health (\d+)\/(\d+)$/, "พลังชีวิต $1/$2"],
+  [/^Touches (\d+) vessel tiles?( \+ arteriole boost)?$/, "ติดหลอดเลือด $1 ช่อง$2"],
+  [/^Delivering \+(\S+) glucose, \+(\S+) amino acids \/s$/, "ส่งมอบกลูโคส +$1, กรดอะมิโน +$2 ต่อวินาที"],
+  [/^Auto-grow keeps (\d+) worker cells$/, "เพาะอัตโนมัติรักษาเซลล์ช่างไว้ $1 ตัว"],
+  [/^Grow worker \((.+)\) \[G\]$/, "เพาะเซลล์ช่าง ($1) [G]"],
+  [/^Auto-grow: (ON|OFF)$/, "เพาะอัตโนมัติ: $1"],
+  [/^Production: (ON|OFF)$/, "การผลิต: $1"],
+  [/^(\d+) immune cells? selected$/, "เลือกเซลล์ภูมิคุ้มกันแล้ว $1 ตัว"],
+  [/^(\d+) AP$/, "$1 แต้ม"],
+  // tutorial + cards + scenes
+  [/^This is your (.+)\. Keep the virus away from it!$/, "นี่คือ $1 ของคุณ ห้ามให้ไวรัสเข้าใกล้!"],
+  [/^Blood brings food\. Build a (.+) touching a red \(pulsing\) vessel\.$/, "เลือดนำอาหารมาให้ สร้าง $1 ให้ติดกับหลอดเลือดสีแดง (ที่กะพริบ)"],
+  [/^More food means more cells\. Build a 2nd (.+)\.$/, "อาหารมากขึ้นหมายถึงเซลล์มากขึ้น สร้าง $1 อันที่ 2"],
+  [/^Now defence\. Build a (.+): its cells eat free virus\.$/, "ต่อไปคือการป้องกัน สร้าง $1: เซลล์ของมันกินไวรัสอิสระ"],
+  [/^Build a (.+): its couriers carry virus samples to your Core\.$/, "สร้าง $1: เซลล์ส่งสารของมันนำตัวอย่างไวรัสไปที่แกนกลาง"],
+  [/^Build a (.+): room for 5 more cells\.$/, "สร้าง $1: เพิ่มที่อยู่ให้เซลล์อีก 5 เซลล์"],
+  [/^Build a (.+): its bodyguards kill infected \(purple\) cells\.$/, "สร้าง $1: บอดี้การ์ดของมันกำจัดเซลล์ที่ติดเชื้อ (สีม่วง)"],
+  [/^(?:Tutorial|TUTORIAL) (\d+)\/(\d+)$/, "บทเรียน $1/$2"],
+  [/^Saving up food\.\.\. \(needs (.+)\)$/, "กำลังสะสมอาหาร... (ต้องใช้ $1)"],
+  [/^Real life: (.+)$/, "ในชีวิตจริง: $1"],
+  [/^(.+): eats it$/, "$1: กินมัน"],
+  [/^(.+) cleans up the bubbles$/, "$1 เก็บกวาดฟอง"],
+  [/^(.+) eats the virus$/, "$1 กินไวรัส"],
+  [/^(.+) attacks the infected cell$/, "$1 โจมตีเซลล์ติดเชื้อ"],
+  [/^(.+) \(touches the vessel\)$/, "$1 (ติดกับหลอดเลือด)"],
+  [/^Some of your own cells mutated and began dividing out of control\..*Read more in Learn\.$/s,
+    "เซลล์ของคุณบางส่วนกลายพันธุ์และเริ่มแบ่งตัวอย่างควบคุมไม่ได้ พวกมันซ่อนบัตร ID จากเซลล์ SWAT ทำให้เซลล์ภูมิคุ้มกันอ่อนล้า และขโมยน้ำตาลในเลือด ไม่มีอาณานิคมไหนชนะศึกนี้ได้ - ในชีวิตจริงระบบภูมิคุ้มกันทำลายมะเร็งระยะแรกได้มาก แต่บางครั้งทำไม่ได้และแพทย์ต้องช่วย อ่านเพิ่มเติมในเมนู 'เรียนรู้'"],
+];
+const TH_CACHE = new Map();
+/** Translate UI text. Exact strings come from TH; messages with numbers/names go through TH_RULES.
+ *  Anything without a Thai version stays English, so a missing line never breaks the game. */
+function tr(s) {
+  if (LANG !== "th" || typeof s !== "string" || s === "") return s;
+  const hit = TH[s];
+  if (typeof hit === "string") return hit;
+  const cached = TH_CACHE.get(s);
+  if (cached !== undefined) return cached;
+  let out = s;
+  for (const [re, tpl] of TH_RULES) {
+    const m = re.exec(s);
+    if (m) { out = tpl.replace(/\$(\d)/g, (_, i) => tr(m[+i] === undefined ? "" : m[+i])); break; }
+  }
+  if (out === s && s.includes(", ")) {            // lists such as "North, East"
+    const parts = s.split(", "), t = parts.map(tr);
+    if (t.some((x, i) => x !== parts[i])) out = t.join(", ");
+  }
+  if (TH_CACHE.size > 4000) TH_CACHE.clear();
+  TH_CACHE.set(s, out);
+  return out;
+}
+
+// ---------- Thai: names + core data (keys come straight from the data objects) ----------
+(() => {
+  const put = (en, th) => { if (typeof en === "string" && en) TH[en] = th; };
+  // Simple (beginner) names. Medical names stay English on purpose.
+  put(CELL_TYPES.neutrophil.simple, "เซลล์ทหาร");
+  put(CELL_TYPES.macrophage.simple, "เซลล์เก็บกวาด");
+  put(CELL_TYPES.dendritic.simple, "เซลล์ส่งสาร");
+  put(CELL_TYPES.nk.simple, "เซลล์บอดี้การ์ด");
+  put(CELL_TYPES.killer_t.simple, "เซลล์ SWAT");
+  put(CELL_TYPES.bcell.simple, "พลปืนแอนติบอดี");
+  put(WORKER_DEF.simple, "เซลล์ช่าง");
+  put(HELPER_DEF.simple, "เซลล์นายพล");
+  put(VIRUS_DEF.simple, "ไวรัส");
+  put(BUILDINGS.core.simple, "แกนกลาง");
+  put(BUILDINGS.hub.simple, "เส้นเลือดฝอย");
+  put(BUILDINGS.arteriole.simple, "ตัวเร่งการไหล");
+  put(BUILDINGS.liver.simple, "โรงผลิตน้ำตาล");
+  put(BUILDINGS.house.simple, "ที่พักไขกระดูก");
+  put(BUILDINGS.barrier.simple, "กำแพงกั้น");
+  put(BUILDINGS.neu_nest.simple, "ค่ายทหาร");
+  put(BUILDINGS.mac_nest.simple, "คลังเซลล์เก็บกวาด");
+  put(BUILDINGS.dc_niche.simple, "ด่านส่งสาร");
+  put(BUILDINGS.nk_den.simple, "ด่านบอดี้การ์ด");
+  put(BUILDINGS.helper.simple, "ศูนย์บัญชาการ");
+  put(BUILDINGS.thymus.simple, "โรงเรียน SWAT");
+  put(BUILDINGS.bcenter.simple, "โรงงานแอนติบอดี");
+  put(TREG_DEF.simple, "เซลล์กรรมการ");
+  put(MEMORY_DEF.simple, "เซลล์ความจำ");
+  put(CANCER_DEF.simple, "เซลล์เกเร");
+  put(AB_DEF.simple, "แอนติบอดี");
+  put(IFN_DEF.simple, "อินเตอร์เฟอรอน");
+  put(COMP_DEF.simple, "คอมพลีเมนต์");
+
+  // ---- cell descriptions + facts ----
+  put(CELL_TYPES.neutrophil.desc, "ทหารที่เร็วแต่อายุสั้น กินไวรัสอิสระ แต่สะเพร่า บางครั้งทำร้ายเซลล์ของคุณเอง เมื่อตายใกล้ไวรัสจะระเบิดเป็นใยเหนียว (NET)");
+  put(CELL_TYPES.neutrophil.fact, "นิวโทรฟิลกินเชื้อโรคและพ่นสารเคมีที่เป็นพิษ พวกมันฆ่าตัวเองหลังผ่านไปไม่กี่วัน จะได้ไม่ทำลายร่างกายคุณ บางตัวระเบิดเป็นใย (NETs) ที่ดักจับและฆ่าผู้บุกรุก");
+  put(CELL_TYPES.macrophage.desc, "ผู้กินไวรัสอิสระที่ช้าแต่ทนทาน (ไวรัสที่ติดป้ายกินเร็วขึ้น 2 เท่า) ยังเก็บกวาดฟองไวรัสที่เหลือจากเซลล์ตายด้วย อยู่ใกล้ศูนย์บัญชาการจะเข้าโหมดนักฆ่า +50%");
+  put(CELL_TYPES.macrophage.fact, "แมคโครฟาจกลืนเชื้อโรค เซลล์ที่ตายแล้ว และสิ่งสกปรก กินแบคทีเรียได้ถึง 100 ตัวก่อนจะหมดแรงตาย เซลล์ Helper T สั่งให้มันเข้า 'โหมดนักฆ่า' ได้");
+  put(CELL_TYPES.dendritic.desc, "ชิมของเหลวรอบตัว เก็บตัวอย่างไวรัส (แอนติเจน) ใส่ถุง แล้วส่งให้แกนกลางเพื่อเริ่มภูมิคุ้มกันแบบจำเพาะ");
+  put(CELL_TYPES.dendritic.fact, "เซลล์เดนไดรต์กลืนและคายของเหลวทั้งวัน เมื่อชิมเจอไวรัสก็เก็บตัวอย่างไว้ เดินทางไปยังต่อมน้ำเหลืองแล้วแสดงตัวอย่างให้เซลล์ T ดู");
+  put(CELL_TYPES.nk.desc, "ตรวจ 'บัตร ID' MHC-I ของทุกเซลล์แล้วสังหารเซลล์ติดเชื้อ: อ่อนต่อเซลล์ที่โชว์ ID แต่แรงมากต่อเซลล์ที่ซ่อน ID ไม่สนใจไวรัสอิสระ");
+  put(CELL_TYPES.nk.fact, "เซลล์ NK มาถึงหลังติดเชื้อ 2-3 วัน เซลล์ที่เครียดหรือไม่แสดง MHC class I (เซลล์ติดเชื้อบางตัว เซลล์มะเร็ง) จะถูกสั่งให้ฆ่าตัวเอง");
+  put(CELL_TYPES.killer_t.desc, "สั่งให้เซลล์ติดเชื้อทำลายตัวเอง - เฉพาะสายพันธุ์ที่แกนกลางเรียนรู้แล้ว และมองไม่เห็นเซลล์ที่ซ่อน MHC-I ทิ้งฟองไวรัสไว้ให้เซลล์เก็บกวาด");
+  put(CELL_TYPES.killer_t.fact, "เซลล์ Killer T ถูกกระตุ้นผ่าน MHC class I มันอ่าน 'หน้าต่าง' MHC-I ของแต่ละเซลล์ แล้วสั่งให้เซลล์ติดเชื้อเข้าสู่อะพอพโทซิส (apoptosis): เซลล์แตกเป็นถุงเล็ก ๆ ที่ดักไวรัสไว้ และแมคโครฟาจจะมากินมัน");
+  put(CELL_TYPES.bcell.desc, "ยิงแอนติบอดีใส่ไวรัสอิสระของสายพันธุ์ที่เรียนรู้แล้ว ไวรัสที่ติดป้ายจะช้าลง ติดเชื้อไม่ได้ และถูกกินเร็วขึ้น 2 เท่า");
+  put(CELL_TYPES.bcell.fact, "แอนติบอดีจับศัตรูด้วยก้ามปู เซลล์กินจะจับ 'ก้น' ของแอนติบอดีเพื่อกลืนศัตรู เซลล์ B ต้องมีทั้งแอนติเจนและเซลล์ Helper T จึงจะกลายเป็นพลาสมาเซลล์");
+  put(WORKER_DEF.fact, "ไฟโบรบลาสต์สร้างและซ่อมแซมเนื้อเยื่อด้วยคอลลาเจน มันไม่ได้ไปหาอาหาร - เลือดนำอาหารมาให้ ไวรัสเข้าเซลล์ผ่านตัวรับ เหมือนกุญแจไขเข้าแม่กุญแจ");
+
+  // ---- building descriptions + facts ----
+  put(BUILDINGS.core.desc, "ที่ที่เซลล์เดนไดรต์แสดงแอนติเจน และเซลล์ T/B ถูกกระตุ้น โปรตีนคอมพลีเมนต์ที่นี่ทำลายไวรัสอิสระใกล้ ๆ ถ้าไวรัสท่วมที่นี่ คุณแพ้");
+  put(BUILDINGS.core.fact, "ต่อมน้ำเหลืองคือฐานของระบบภูมิคุ้มกันบน 'ทางด่วน' น้ำเหลือง เซลล์เดนไดรต์พบเซลล์ T และ B ที่นี่ คอมพลีเมนต์เจาะรูผู้บุกรุกได้โดยไม่ต้องฝึก");
+  put(BUILDINGS.hub.desc, "ต้องติดกับหลอดเลือด ส่งกลูโคสและกรดอะมิโนจากเลือด ยิ่งติดหลอดเลือดหลายช่องยิ่งส่งมาก");
+  put(BUILDINGS.hub.fact, "เส้นเลือดฝอยคือหลอดเลือดที่เล็กที่สุด กลูโคส กรดอะมิโน ออกซิเจน และเซลล์ภูมิคุ้มกัน ผ่านออกจากเลือดทางผนังบางของมัน");
+  put(BUILDINGS.arteriole.desc, "ขยายตัวเพื่อดันเลือดผ่านเส้นเลือดฝอยใกล้ ๆ ให้มากขึ้น: เส้นเลือดฝอยในระยะส่งของได้มากขึ้น 50%");
+  put(BUILDINGS.arteriole.fact, "อาร์เทอริโอลคือหลอดเลือดแดงเล็ก ๆ ที่ขยายหรือหดเพื่อควบคุมการไหลของเลือด ตอนอักเสบมันขยาย - นั่นคือเหตุผลที่ผิวติดเชื้อแดงและอุ่น");
+  put(BUILDINGS.liver.desc, "เปลี่ยนกรดอะมิโน 0.6/วินาที เป็นกลูโคส +1.5/วินาที ส่งเข้าเลือด หยุดทำงานถ้าติดเชื้อ");
+  put(BUILDINGS.liver.fact, "เมื่อน้ำตาลในเลือดต่ำ เซลล์ตับสร้างกลูโคสใหม่จากกรดอะมิโน (gluconeogenesis) แล้วปล่อยเข้าเลือดให้ทุกเซลล์ใช้");
+  put(BUILDINGS.house.desc, "+5 เพดานประชากร (เซลล์ช่างและเซลล์ภูมิคุ้มกันนับรวมกัน)");
+  put(BUILDINGS.house.fact, "สเต็มเซลล์ในไขกระดูกสร้างเม็ดเลือดทุกชนิด รวมถึงเม็ดเลือดขาวทั้งหมด (เซลล์ T เริ่มที่นี่แต่โตเต็มที่ในต่อมไทมัส)");
+  put(BUILDINGS.barrier.desc, "เซลล์ที่เชื่อมกันแน่น ไวรัสต้องติดเชื้อมันก่อนจึงจะผ่านได้ เซลล์ของคุณลอดผ่านได้ กดค้างแล้วลากเพื่อวาด");
+  put(BUILDINGS.barrier.fact, "เซลล์เยื่อบุผิวคือ 'ผิวด้านใน' ของคุณ เชื่อมกันแน่น เรียกขอความช่วยเหลือด้วยไซโตไคน์ และมักเป็นเซลล์แรกที่ไวรัสติดเชื้อ");
+  put(BUILDINGS.neu_nest.desc, "ส่งเซลล์ทหาร (นิวโทรฟิล) อายุสั้นออกไปกินไวรัสอิสระและระเบิดเป็น NET");
+  put(BUILDINGS.mac_nest.desc, "ส่งเซลล์เก็บกวาด (แมคโครฟาจ) ออกไปกินไวรัสและเก็บกวาดฟองจากเซลล์ที่ตาย");
+  put(BUILDINGS.mac_nest.fact, "โมโนไซต์รออยู่ในเลือดและม้ามเป็นกำลังเสริม และกลายเป็นแมคโครฟาจเมื่อต้องการกำลังหนุน");
+  put(BUILDINGS.dc_niche.desc, "ดูแลเซลล์ส่งสาร (เดนไดรต์) ลาดตระเวนสูงสุด 3 เซลล์ ถ้าไม่มี แอนติเจนจะไปถึงต่อมน้ำเหลืองช้ามาก");
+  put(BUILDINGS.nk_den.desc, "ส่งเซลล์บอดี้การ์ด (NK) ออกไปตรวจ ID และสังหารเซลล์ติดเชื้อ");
+  put(BUILDINGS.helper.desc, "บ้านของเซลล์นายพล ถ้าไม่มีเซลล์ Helper T แกนกลางเรียนรู้ช้าลงครึ่งหนึ่ง ออร่า: คลังผลิตเซลล์เร็วขึ้น เซลล์แกร่งขึ้น 25% เซลล์เก็บกวาดเข้าโหมดนักฆ่า");
+  put(BUILDINGS.helper.fact, "เซลล์ Helper T ถูกกระตุ้นผ่าน MHC class II บางตัวสั่งแมคโครฟาจเข้าโหมดนักฆ่า บางตัวกระตุ้นเซลล์ B เอชไอวีทำลายพวกมัน");
+  put(BUILDINGS.thymus.desc, "ผลิตเซลล์ SWAT (Killer T) - ต่อเมื่อต่อมน้ำเหลืองเรียนรู้สายพันธุ์ที่กำลังระบาดแล้ว (clonal expansion)");
+  put(BUILDINGS.thymus.fact, "เซลล์ T ฝึกในต่อมไทมัส 'มหาวิทยาลัยสังหาร': ผ่านเพียงราว 2% - เฉพาะตัวที่มีตัวรับใช้งานได้และไม่โจมตีร่างกายตัวเอง");
+  put(BUILDINGS.bcenter.desc, "ผลิตพลปืนแอนติบอดี (พลาสมาเซลล์) - ต่อเมื่อต่อมน้ำเหลืองเรียนรู้สายพันธุ์ที่กำลังระบาดแล้ว");
+  put(BUILDINGS.bcenter.fact, "เซลล์ B ฝึกในไขกระดูก ในศูนย์เจริมินัล (germinal center) พวกมันกลายพันธุ์แอนติบอดี และตัวที่จับแน่นที่สุดชนะ (affinity maturation)");
+
+  // ---- outfits (shown as "Uniform: ...") ----
+  put(OUTFIT.neutrophil, "หมวกทหาร + เข็มขัดระเบิดมือ");
+  put(OUTFIT.macrophage, "หมวกภารโรง + เสื้อสะท้อนแสง");
+  put(OUTFIT.dendritic, "หมวกคนส่งของ + กระเป๋าใส่ตัวอย่าง");
+  put(OUTFIT.nk, "แว่นดำบอดี้การ์ด + หูฟัง + สูท");
+  put(OUTFIT.killer_t, "หมวก SWAT + กระบังหน้า + ตราตำรวจ");
+  put(OUTFIT.bcell, "แว่นพลปืน + สายคาดกระสุนแอนติบอดี");
+  put(OUTFIT.helper, "หมวกนายพล + เหรียญตรา");
+  put(OUTFIT.worker, "หมวกนิรภัย + เข็มขัดเครื่องมือ");
+  put(OUTFIT.virion, "หน้ากากโจร + กระสอบของโจรกรรม");
+  put(OUTFIT.cancer, "หมวกนิรภัยร้าว + ผ้าโพกหัว (ช่างที่กลายเป็นเกเร)");
+  put(OUTFIT.treg, "เสื้อกรรมการ + นกหวีด");
+  put(OUTFIT.memory, "แว่นกลม + สมุดบันทึก");
+  put(TRAIT_TEXT.mhc_down, "ซ่อน ID MHC-I: SWAT มองไม่เห็น บอดี้การ์ดแรงขึ้น");
+  put(TRAIT_TEXT.ifn_block, "ขัดขวางสัญญาณอินเตอร์เฟอรอน");
+})();
+
+// ---------- Thai: facts, How-to cards, teacher notes, encyclopedia ----------
+(() => {
+  const put = (en, th) => { if (typeof en === "string" && en) TH[en] = th; };
+  const th_facts = [
+    "ไวรัสขยายพันธุ์เองไม่ได้ - มันยึดกลไกของเซลล์ที่มีชีวิตไปใช้",
+    "ไข้คือการป้องกันตัว: ไวรัสหลายชนิดแบ่งตัวช้าลงเมื่ออุณหภูมิสูง",
+    "วัคซีนฝึกเซลล์ B และ T ให้จดจำเชื้อโรคก่อนที่คุณจะเจอมันจริง ๆ",
+    "ไข้หวัดใหญ่เปลี่ยนไปเล็กน้อยทุกปี จึงต้องปรับวัคซีนไข้หวัดใหญ่ทุกปี",
+    "ต่อมน้ำเหลืองบวมระหว่างติดเชื้อเพราะเซลล์ T และ B กำลังแบ่งตัวอยู่ข้างใน",
+    "อินเตอร์เฟอรอนได้ชื่อนี้เพราะมัน 'รบกวน' (interfere) การแบ่งตัวของไวรัสในเซลล์ข้างเคียง",
+    "การตอบสนองแบบจำเพาะครั้งแรก (primary) ใช้เวลาราวหนึ่งสัปดาห์ แต่การตอบสนองจากความจำใช้เวลาแค่วันสองวัน",
+    "หลังกำจัดการติดเชื้อได้ เซลล์ T effector ราว 90-95% จะตาย - เหลือแต่เซลล์ความจำ",
+    "เอชไอวีติดเชื้อเซลล์ Helper T (CD4+) ภูมิคุ้มกันแบบจำเพาะทั้งระบบจึงค่อย ๆ ล้มเหลว",
+    "นิวโทรฟิลส่วนใหญ่สู้กับแบคทีเรีย ส่วนไวรัสนั้นอินเตอร์เฟอรอน เซลล์ NK และเซลล์ T สำคัญกว่า",
+    "ทุกเซลล์สร้าง ATP ของตัวเอง - ไม่เคยแบ่งปันกัน ATP ที่รั่วออกจากเซลล์เป็นสัญญาณเตือนที่บอกเซลล์ภูมิคุ้มกันว่ามีบางอย่างเสียหาย",
+    "พลาสมาในเลือดพากลูโคสและกรดอะมิโนไปยังเนื้อเยื่อทุกส่วน ส่วนเม็ดเลือดแดงพาออกซิเจน",
+    "เนื้อเยื่อที่อักเสบแดงและอุ่นเพราะอาร์เทอริโอลขยายและนำเลือดเข้ามามากขึ้น",
+    "แมคโครฟาจกลืนแบคทีเรียได้ถึง 100 ตัวก่อนจะหมดแรงตาย",
+    "นิวโทรฟิลบางตัวระเบิดตัวเองโดยตั้งใจ โปรยใยพิษเหนียว (NET) ที่ดักผู้บุกรุก",
+    "ต่อมไทมัสคือ 'มหาวิทยาลัยสังหาร': มีเซลล์ T อ่อนวัยผ่านการฝึกเพียงราว 2%",
+    "แอนติบอดีคือกลุ่มโปรตีนไร้สมองที่มีก้ามปู - 'แฮชแท็กแห่งความตาย' ที่ทำเครื่องหมายศัตรู",
+    "แอนติบอดี IgM คือแอนติบอดีห้าตัวติดกัน - ชนิดแรกที่เซลล์ B ส่งออกมา",
+    "เซลล์ T ควบคุม (Regulatory T) ปิดการตอบสนองของภูมิคุ้มกันอีกครั้งเมื่อชนะศึกแล้ว",
+    "เซลล์ Natural Killer มาถึงหลังติดเชื้อ 2-3 วัน และโจมตีเซลล์ที่ซ่อน ID แบบ MHC-I",
+    "เซลล์เดนไดรต์พลาสมาไซตอยด์สแกนหาไวรัสแล้วปล่อยอินเตอร์เฟอรอนท่วมบริเวณนั้น",
+    "เซลล์ T และ B ความจำรอเงียบ ๆ ได้หลายปี พร้อมแบ่งตัวทันทีที่ไวรัสกลับมา",
+  ];
+  FACTS.forEach((f, i) => put(f, th_facts[i]));
+
+  const card = s => HOWTO_CARDS.find(c => c.scene === s);
+  const putCard = (scene, title, caption, real) => {
+    const c = card(scene); if (!c) return;
+    put(c.title, title); if (c.caption) put(c.caption, caption); if (c.real) put(c.real, real);
+  };
+  putCard("goal", "เป้าหมายของคุณ",
+    "ไวรัสไหลเข้ามาตามหลอดเลือด หยุดมันก่อนที่จะถึงแกนกลางของคุณ",
+    "แกนกลางคือต่อมน้ำเหลือง: ที่ที่เซลล์ภูมิคุ้มกันมาพบกันและเรียนรู้");
+  putCard("codex", "พบกับเซลล์ของคุณ",
+    "ทุกเซลล์สวมชุดตามหน้าที่ของมัน จำชุดให้ได้แล้วคุณจะอ่านการต่อสู้ได้ในพริบตา",
+    "รูปร่างตามกายวิภาคจริงจากหนังสือ: หนามเขา แขนยวบ ๆ หนามเฟือง และนิวเคลียส");
+  putCard("food", "อาหารมาจากเลือด",
+    "สร้างเส้นเลือดฝอยให้ติดหลอดเลือดสีแดง เซลล์ช่างจะสร้างให้ แล้วอาหารจะไหลเข้ามา",
+    "เส้นเลือดฝอยปล่อยกลูโคสและกรดอะมิโนออกจากเลือด ทุกเซลล์สร้าง ATP ของตัวเองจากกลูโคส");
+  putCard("virus", "ไวรัสโจมตีอย่างไร",
+    "ไวรัสบุกเข้าเซลล์ (สีม่วง) เปลี่ยนให้เป็นโรงงานผลิตไวรัส แล้วทำให้แตก กำจัดเซลล์สีม่วงให้เร็ว!",
+    "ไวรัสทำอะไรเองไม่ได้ - มันชนเซลล์โดยบังเอิญ เซลล์ที่ติดเชื้อปล่อยอินเตอร์เฟอรอนเตือนเพื่อนบ้าน");
+  putCard("order", "ควรสร้างอะไรก่อน",
+    "อาหารก่อน จากนั้นทหารและเซลล์ส่งสาร แล้วบอดี้การ์ด เซลล์ที่เรียนรู้มาทีหลัง",
+    "ภูมิคุ้มกันโดยกำเนิดตอบสนองภายในไม่กี่ชั่วโมง ส่วนภูมิคุ้มกันแบบจำเพาะ (เรียนรู้) ใช้เวลาหลายวันในครั้งแรก");
+  putCard("damage", "ใครสู้กับอะไร",
+    "ไวรัสอิสระและเซลล์ติดเชื้อต้องใช้นักสู้คนละแบบ สร้างให้ครบทั้งสองชนิด!",
+    "เซลล์โดยกำเนิดโจมตีได้ทุกอย่าง ส่วนเซลล์ T และ B โจมตีเฉพาะสายพันธุ์ที่ต่อมน้ำเหลืองเรียนรู้แล้ว");
+  putCard("adaptive", "การเรียนรู้และความจำ",
+    "เซลล์ส่งสารนำตัวอย่างไวรัสไปที่แกนกลาง ต่อมาเซลล์ SWAT และแอนติบอดีสำหรับสายพันธุ์นั้นจะปรากฏ",
+    "เซลล์เดนไดรต์แสดงแอนติเจนให้เซลล์ T ในต่อมน้ำเหลือง เซลล์ความจำทำให้ศึกครั้งต่อไปเร็ว - เหมือนวัคซีน");
+  putCard("controls", "การควบคุม", "ใช้แค่เมาส์ก็เริ่มเล่นได้ ปุ่มคีย์บอร์ดเป็นทางลัด", "");
+  putCard("notes", "สำหรับครู: สิ่งที่เกมทำให้ง่ายขึ้น", "", "");
+
+  const th_notes = [
+    "เวลาถูกย่อให้เร็ว: การตอบสนองแบบจำเพาะครั้งแรก (primary) ในความจริงใช้เวลาราวหนึ่งสัปดาห์",
+    "สิ่งก่อสร้างแทนกลุ่มของเซลล์ เซลล์ภูมิคุ้มกันจริงลาดตระเวนทั่วร่างกายผ่านเลือดและน้ำเหลือง",
+    "แถบกลูโคสคือน้ำตาลส่วนกลางในเลือด - ATP เองไม่เคยถูกแบ่งปันระหว่างเซลล์",
+    "ไวรัสจริงจำนวนมากแตกหน่อออกจากเซลล์ แทนที่จะทำให้เซลล์แตก",
+    "พลาสมาเซลล์ตัวจริงอยู่ในต่อมน้ำเหลืองหรือไขกระดูก ส่วนแอนติบอดีของมันเดินทางในเลือด",
+    "คอมพลีเมนต์กระจายอยู่ทั่วเลือดและเนื้อเยื่อ ไม่ได้มีเฉพาะที่ต่อมน้ำเหลือง",
+    "Drift = เปลี่ยนเล็กน้อย แอนติบอดีเดิมจับได้แย่ลง Shift = ยีนสลับกับไข้หวัดสายพันธุ์อื่น: กลายเป็นสายพันธุ์ใหม่เอี่ยม",
+    "บางสายพันธุ์ซ่อน MHC-I (เซลล์ CD8 T มองไม่เห็น เซลล์ NK โจมตีแรงขึ้น) หรือขัดขวางอินเตอร์เฟอรอน",
+    "ชุดยูนิฟอร์มเป็นตัวช่วยจำ - เซลล์จริงไม่ได้สวมเสื้อผ้า! รูปร่างอ้างอิงภาพเซลล์ในหนังสือ",
+    "เซลล์ติดเชื้อเป็นสีม่วงในเกมเพื่อให้เด่นกว่าไวรัสสีแดง ในชีวิตจริง NET ส่วนใหญ่สู้กับแบคทีเรีย",
+  ];
+  SCIENCE_NOTES.forEach((n, i) => put(n, th_notes[i]));
+
+  // Encyclopedia: per entry key -> [game text (optional), ...bio lines]
+  const enc = {
+    hub: [null,
+      "เส้นเลือดฝอยคือหลอดเลือดที่เล็กที่สุด - ผนังของมันหนาเพียงเซลล์เดียว",
+      "กลูโคส กรดอะมิโน ออกซิเจน และเซลล์ภูมิคุ้มกันล้วนออกจากเลือดผ่านมัน",
+      "ระหว่างการอักเสบ เซลล์หลอดเลือดเปลี่ยนรูปร่าง พลาสมาจึงไหลท่วมเข้าสู่เนื้อเยื่อที่ติดเชื้อ"],
+    arteriole: [null,
+      "อาร์เทอริโอลคือหลอดเลือดแดงเล็ก ๆ ที่ขยายหรือหดเพื่อควบคุมการไหลของเลือด",
+      "การอักเสบทำให้มันขยาย: บริเวณนั้นแดง อุ่น และบวม แถมเจ็บ เพื่อให้คุณพัก",
+      "ความร้อนที่เพิ่มขึ้นทำให้เชื้อโรคเครียด ขณะที่แผลหายเร็วขึ้น"],
+    liver: [null,
+      "เมื่อน้ำตาลในเลือดต่ำ เซลล์ตับสร้างกลูโคสใหม่จากกรดอะมิโน (gluconeogenesis)",
+      "ทุกเซลล์เปลี่ยนกลูโคสเป็น ATP ของตัวเอง ATP ไม่เคยถูกแบ่งปันระหว่างเซลล์"],
+    house: [null,
+      "สเต็มเซลล์ในไขกระดูกสร้างเม็ดเลือดทุกชนิด รวมถึงเม็ดเลือดขาวทั้งหมด",
+      "เซลล์ B ฝึกจนเสร็จในไขกระดูก ส่วนเซลล์ T ย้ายต่อไปที่ต่อมไทมัส",
+      "โมโนไซต์จากไขกระดูกรออยู่ในเลือดและม้ามเป็นกำลังเสริม"],
+    barrier: [null,
+      "เซลล์เยื่อบุผิวคือ 'ผิวด้านใน' ของคุณ บุอยู่ในทางเดินหายใจและลำไส้",
+      "พวกมันเก่งในการเรียกขอความช่วยเหลือด้วยไซโตไคน์พิเศษ",
+      "ซิเลียที่คล้ายเส้นขนกวาดเมือก (ผลิตโดยเซลล์ถ้วย) ที่ดักผู้บุกรุกออกไป",
+      "มักเป็นเซลล์แรกที่ไวรัสติดเชื้อ"],
+    neutrophil: [null,
+      "นิวโทรฟิลกินเชื้อโรคและอ้วกสารเคมีพิษออกมาเพื่อฆ่ามัน",
+      "พวกมันฆ่าตัวเองไม่กี่วันหลังเกิด จึงไม่มีเวลาทำลายร่างกายของคุณ",
+      "บางตัวระเบิดโดยตั้งใจ ปล่อยใยพิษกว้าง (NET) ที่ดักและฆ่าเชื้อโรค",
+      "พวกมันสะเพร่ามากจนการโจมตีอาจทำร้ายเซลล์ของคุณเอง"],
+    macrophage: [null,
+      "แมคโครฟาจกินเชื้อโรค เซลล์ที่ตายแล้ว และสิ่งแปลกปลอมอย่างฝุ่นและสิ่งสกปรก",
+      "ตัวหนึ่งกลืนแบคทีเรียได้ถึง 100 ตัวก่อนจะหมดแรงตาย",
+      "ฟาโกไซโทซิส: จับศัตรู พับมันเข้าเป็น 'คุกจิ๋ว' ละลายด้วยกรด แล้วคายเศษทิ้ง",
+      "เซลล์ Helper T สามารถสลับให้มันเข้า 'โหมดนักฆ่า' ที่เดือดดาลได้",
+      "พวกมันกับนิวโทรฟิลเรียกรวมกันว่า 'ฟาโกไซต์' ซึ่งแปลว่า 'เซลล์กิน'"],
+    dendritic: [null,
+      "เซลล์เดนไดรต์กลืนและคายของเหลวรอบตัวอยู่ตลอดเวลา",
+      "เมื่อชิมเจอไวรัส แบคทีเรีย เซลล์ตาย หรือไซโตไคน์เตือนภัย พวกมันจะเก็บตัวอย่างไว้",
+      "พวกมันเดินทางผ่านน้ำเหลืองไปยังต่อมน้ำเหลือง แล้วแสดงตัวอย่าง (แอนติเจน) ให้เซลล์ T ดู",
+      "พวกมันนำเสนอบน MHC class II - 'ขนมปังฮอตดอก' ที่ห่อ 'ไส้กรอก' แอนติเจนไว้"],
+    nk: [null,
+      "เซลล์ Natural Killer มาถึงราว 2-3 วันหลังการติดเชื้อเริ่มต้น",
+      "พวกมันตรวจว่าเซลล์เครียดหรือขาด 'หน้าต่าง' MHC class I หรือไม่",
+      "เซลล์ที่ไม่มี MHC class I - เซลล์ติดเชื้อบางตัวและเซลล์มะเร็ง - จะถูกสั่งให้ฆ่าตัวเอง"],
+    helper: [null,
+      "เซลล์ Helper T ถูกเซลล์เดนไดรต์กระตุ้นผ่าน MHC class II บวกสัญญาณที่สอง ('จูบ')",
+      "พวกมันแบ่งตัวเร็วในต่อมน้ำเหลืองและแยกเป็นสองกลุ่ม",
+      "กลุ่มหนึ่งสั่งแมคโครฟาจเข้าโหมดนักฆ่า อีกกลุ่มกระตุ้นเซลล์ B",
+      "พวกมันตัดสินว่าศึกจบเมื่อไร เอชไอวีทำลายพวกมัน"],
+    killer_t: [null,
+      "เซลล์ T ฝึกในต่อมไทมัส 'มหาวิทยาลัยสังหาร' - ผ่านเพียงราว 2%",
+      "เซลล์ Killer T ถูกเซลล์เดนไดรต์กระตุ้นผ่าน MHC class I",
+      "พวกมันสแกนหน้าต่าง MHC-I ของแต่ละเซลล์ และสั่งให้เซลล์ติดเชื้อทำลายตัวเอง (apoptosis)",
+      "เซลล์ที่กำลังตายแตกเป็นห่อที่ดักไวรัสไว้ แล้วแมคโครฟาจก็กินมัน"],
+    bcell: [null,
+      "เซลล์ B ฝึกในไขกระดูก - มีเซลล์ B สำหรับทุกโรค",
+      "แอนติเจนกระตุ้นพวกมันเล็กน้อย เซลล์ Helper T ที่จับคู่กันกระตุ้นเต็มที่",
+      "เซลล์ B ที่ถูกกระตุ้นเต็มที่กลายเป็นพลาสมาเซลล์ที่พ่นแอนติบอดีจำนวนมหาศาล",
+      "พลาสมาเซลล์อายุยืนปักหลักในที่สบาย ๆ และผลิตแอนติบอดีได้หลายปี"],
+    treg: ["เมื่อกำจัดระลอกได้ พวกมันทำให้สงบลงและให้เซลล์ SWAT กับแอนติบอดีส่วนใหญ่เกษียณ",
+      "เซลล์ Regulatory T ลงมือปิดการป้องกันและทำให้ระบบภูมิคุ้มกันสงบลง",
+      "การผ่อนลงสำคัญ: ภูมิคุ้มกันที่ทำงานหนักก่อความเสียหายและเผาผลาญพลังงานมาก"],
+    memory: ["ทุกสายพันธุ์ที่แกนกลางเรียนรู้จะกลายเป็นความจำ: ครั้งหน้าที่สายพันธุ์นั้นมา การตอบสนองจะเร็ว",
+      "เซลล์ B ความจำรอเงียบ ๆ ในต่อมน้ำเหลืองและแบ่งตัวทันทีที่แอนติเจนกลับมา",
+      "เซลล์ T ความจำที่ประจำในเนื้อเยื่อโจมตีทันทีและปลุกเซลล์ภูมิคุ้มกันรอบข้าง",
+      "เซลล์ T ความจำแบบ effector ลาดตระเวนในเลือดและน้ำเหลือง ส่วนแบบ central อยู่ในต่อมน้ำเหลืองและสร้างกองทัพใหม่เร็ว",
+      "นี่คือเหตุผลที่วัคซีนได้ผล"],
+    core: [null,
+      "ต่อมน้ำเหลืองคือฐานของระบบภูมิคุ้มกันตามแนว 'ทางด่วน' น้ำเหลือง",
+      "น้ำเหลืองระบายของเหลวส่วนเกินจากเนื้อเยื่อ และพาเซลล์ที่เสียหาย ผู้บุกรุก และสัญญาณไปด้วย",
+      "ต่อมน้ำเหลืองบวมระหว่างติดเชื้อเพราะเซลล์ T และ B แบ่งตัวอยู่ข้างใน"],
+    worker: ["สร้างและซ่อมสิ่งก่อสร้างของคุณเอง ไวรัสยึดมันแล้วทำให้แตกได้",
+      "ไฟโบรบลาสต์สร้างและซ่อมแซมเนื้อเยื่อด้วยคอลลาเจน",
+      "ไวรัสเข้าเซลล์ผ่านตัวรับ เหมือนกุญแจไขเข้าแม่กุญแจ",
+      "เซลล์ที่ติดเชื้อปล่อยอินเตอร์เฟอรอนเตือนเพื่อนบ้าน"],
+    virion: ["ไหลเข้ามาตามหลอดเลือด ติดเชื้อเซลล์ของคุณ แล้วทำให้แตกกลายเป็นไวรัสเพิ่มขึ้น",
+      "ไวรัสไม่สามารถลงมือทำอะไรได้เอง - มันชนเหยื่อโดยบังเอิญล้วน ๆ",
+      "พวกมันฉีดยีนเข้าไปแล้วเปลี่ยนเซลล์เป็นโรงงานผลิตไวรัส เมื่อเต็มแล้วเซลล์ก็แตก",
+      "พวกมันแบ่งตัวและกลายพันธุ์เร็วมาก จึงมีตัวกลายพันธุ์ที่อยู่รอดดีกว่าเสมอ",
+      "รูปร่างที่มีชื่อเสียง: ไข้หวัดใหญ่ (ไข่) อะดีโนไวรัส (ลูกเต๋ามีหนวด) โคโรนาไวรัส (มงกุฎ) อีโบลา (หนอน)"],
+    cancer: ["เซลล์ของคุณเองที่กลายเป็นเกเร",
+      "มะเร็งเริ่มเมื่อเซลล์ของคุณเองตัวหนึ่งกลายพันธุ์และแบ่งตัวอย่างควบคุมไม่ได้",
+      "เซลล์มะเร็งจำนวนมากหยุดแสดง MHC class I ซึ่งซ่อนมันจากเซลล์ Killer T",
+      "เนื้องอกขโมยสารอาหารและทำให้เซลล์ภูมิคุ้มกันรอบข้างอ่อนล้าได้",
+      "ระบบภูมิคุ้มกันทำลายมะเร็งระยะแรกได้มาก แต่บางครั้งแพทย์ต้องช่วย (ผ่าตัด เคมีบำบัด ภูมิคุ้มกันบำบัด)"],
+    antibody: ["ยิงโดยพลปืนแอนติบอดี: ไวรัสที่ติดป้ายจะช้าลง ติดเชื้อไม่ได้ และถูกกินเร็วขึ้น 2 เท่า",
+      "แอนติบอดีคือกลุ่มโปรตีนไร้สมองที่มีก้ามปู - 'แฮชแท็กแห่งความตาย' สำหรับศัตรู",
+      "ฟาโกไซต์จับ 'ก้น' ของแอนติบอดีเพื่อกินศัตรู ก้นนั้นยังเรียกระบบคอมพลีเมนต์ด้วย",
+      "IgM คือแอนติบอดีห้าตัวติดกัน - ชนิดแรกที่ส่งออกมา IgG เป็นชนิดเดียวที่ไปถึงทารกในครรภ์",
+      "IgA ทำความสะอาดเยื่อเมือก IgE ปกป้องร่างกายจากปรสิต"],
+    ifn: ["เซลล์ติดเชื้อส่งวงแหวนสีฟ้าออกไป: เซลล์ใกล้เคียงได้โล่ที่มักป้องกันการติดเชื้อ",
+      "เซลล์ติดเชื้อปล่อยอินเตอร์เฟอรอนเตือนเซลล์อื่นและซื้อเวลา",
+      "เซลล์ที่ได้รับคำเตือนปิดการผลิตโปรตีน ซึ่งทำให้ไวรัสช้าลง",
+      "เซลล์เดนไดรต์พลาสมาไซตอยด์สแกนหาไวรัสและปล่อยอินเตอร์เฟอรอนท่วมท้น",
+      "ไพโรเจนทำให้สมองเร่งอุณหภูมิขึ้น - เป็นไข้"],
+    complement: ["แกนกลางช็อตไวรัสอิสระที่เข้าใกล้",
+      "กองทัพโปรตีนกว่า 30 ชนิดที่ทำงานร่วมกัน",
+      "มันทำให้ศัตรูพิการและเป็นที่จับให้เซลล์ภูมิคุ้มกันคว้าไว้ได้ง่าย",
+      "มันกระตุ้นเซลล์ภูมิคุ้มกันและนำทางไปหาผู้บุกรุก",
+      "มันฉีกรูบนศัตรูจนตาย - โปรตีนที่ทำงานแต่ละตัวเปิดการทำงานของตัวอื่นเพิ่ม"],
+  };
+  for (const e of ENCYCLOPEDIA) {
+    const a = enc[e.key];
+    if (!a) continue;
+    // entries that carry their own "game" line (not borrowed from a building) have a Thai first item
+    const hasGame = e.game !== undefined && !a.__noGame;
+    let rest = a;
+    if (a[0] !== null) { put(e.game, a[0]); }
+    rest = a.slice(1);
+    e.bio.forEach((s, i) => put(s, rest[i]));
+  }
+})();
+
+// ---------- Thai: UI + in-game messages (fixed strings) ----------
+Object.assign(TH, {
+  "Changes the game text language. Medical terms stay in English.": "เปลี่ยนภาษาของข้อความในเกม ศัพท์ทางการแพทย์ยังเป็นภาษาอังกฤษ",
+  // directions
+  "North": "เหนือ", "South": "ใต้", "West": "ตะวันตก", "East": "ตะวันออก",
+  "North-East": "ตะวันออกเฉียงเหนือ", "South-West": "ตะวันตกเฉียงใต้",
+  "Core": "แกนกลาง", "CORE": "แกนกลาง",
+  "blocked": "ป้องกันได้", "ouch": "โอ๊ย",
+  // alerts
+  "Your immune cells are getting exhausted...": "เซลล์ภูมิคุ้มกันของคุณเริ่มหมดแรงแล้ว...",
+  "Welcome! The blood feeds your colony - build Capillary Beds touching blood vessels.": "ยินดีต้อนรับ! เลือดหล่อเลี้ยงอาณานิคมของคุณ - สร้างเส้นเลือดฝอยให้ติดกับหลอดเลือด",
+  "Build innate defenses and Courier Posts before the virus arrives.": "สร้างแนวป้องกันโดยกำเนิดและด่านส่งสารก่อนที่ไวรัสจะมาถึง",
+  "Population cap reached - build a Marrow Niche.": "ประชากรเต็มแล้ว - สร้างที่พักไขกระดูก",
+  "You can't demolish infected tissue - send NK / CD8 T cells to it.": "รื้อเนื้อเยื่อที่ติดเชื้อไม่ได้ - ส่งเซลล์ NK / CD8 T ไปจัดการ",
+  "Infected! The cell turns purple": "ติดเชื้อ! เซลล์เปลี่ยนเป็นสีม่วง",
+  "A tissue cell was infected - kill it with NK / CD8 cells before it bursts!": "เซลล์เนื้อเยื่อติดเชื้อ - ใช้เซลล์ NK / CD8 กำจัดก่อนมันแตก!",
+  "Interferon: neighbours get a blue shield": "อินเตอร์เฟอรอน: เซลล์ข้างเคียงได้โล่สีฟ้า",
+  "It burst - more virus came out!": "แตกแล้ว - ไวรัสออกมามากขึ้น!",
+  "Self-destructed before it could burst!": "ทำลายตัวเองก่อนที่จะแตก!",
+  "Infected cells destroyed (some healthy tissue lost - collateral damage).": "ทำลายเซลล์ติดเชื้อแล้ว (เสียเนื้อเยื่อดีบางส่วน - ความเสียหายข้างเคียง)",
+  "Bubbles trap the virus - a Cleaner must eat them": "ฟองกักไวรัสไว้ - เซลล์เก็บกวาดต้องกินมัน",
+  "Soldier exploded into a sticky NET!": "ทหารระเบิดเป็นใยเหนียว (NET)!",
+  "Virus hit the Core - it loses health!": "ไวรัสโจมตีแกนกลาง - แกนกลางเสียพลังชีวิต!",
+  "The Core is learning this virus...": "แกนกลางกำลังเรียนรู้ไวรัสนี้...",
+  "A dendritic cell": "เซลล์เดนไดรต์", "Lymph flow": "น้ำเหลืองที่ไหลมา",
+  " (cross-reactive memory helps)": " (ความจำข้ามสายพันธุ์ช่วยได้)",
+  "Antigenic DRIFT: the virus changed slightly - old antibodies fit less well.": "แอนติเจนดริฟต์ (DRIFT): ไวรัสเปลี่ยนไปเล็กน้อย - แอนติบอดีเดิมจับได้แย่ลง",
+  "Antigenic SHIFT: a brand-new strain your immune system has never seen!": "แอนติเจนชิฟต์ (SHIFT): สายพันธุ์ใหม่เอี่ยมที่ภูมิคุ้มกันของคุณไม่เคยเจอ!",
+  "Something is wrong... some of your own cells are dividing out of control!": "มีบางอย่างผิดปกติ... เซลล์ของคุณบางส่วนกำลังแบ่งตัวอย่างควบคุมไม่ได้!",
+  "Another cell mutated...": "อีกเซลล์หนึ่งกลายพันธุ์...",
+  "Uneaten bubbles leaked virus! Keep Cleaner Cells near the fight.": "ฟองที่ไม่ถูกกินปล่อยไวรัสรั่วออกมา! ให้เซลล์เก็บกวาดอยู่ใกล้การต่อสู้",
+  "Out of bounds.": "อยู่นอกพื้นที่",
+  "That space is occupied.": "พื้นที่นั้นมีของอยู่แล้ว",
+  "Only Barrier Walls can go on blood vessels.": "มีแต่กำแพงกั้นเท่านั้นที่วางบนหลอดเลือดได้",
+  "A Capillary Bed must touch a blood vessel (dark red tiles).": "เส้นเลือดฝอยต้องติดกับหลอดเลือด (ช่องสีแดงเข้ม)",
+  "Not enough resources.": "ทรัพยากรไม่พอ",
+  // upgrades
+  "Gives memory cells for the expected next strain - the adaptive response starts much faster.": "ให้เซลล์ความจำสำหรับสายพันธุ์ถัดไปที่คาดไว้ - ภูมิคุ้มกันแบบจำเพาะเริ่มได้เร็วขึ้นมาก",
+  "Affinity Maturation": "การบ่มแอนติบอดี (Affinity Maturation)",
+  "B cells pick antibodies that stick tighter: plasma cells neutralize virus 20% faster.": "เซลล์ B เลือกแอนติบอดีที่จับแน่นขึ้น: พลาสมาเซลล์ทำให้ไวรัสหมดฤทธิ์เร็วขึ้น 20%",
+  "Interferon Signaling": "สัญญาณอินเตอร์เฟอรอน",
+  "Interferon reaches 25% further and blocks infection more often.": "อินเตอร์เฟอรอนไปได้ไกลขึ้น 25% และป้องกันการติดเชื้อบ่อยขึ้น",
+  "Bone-Marrow Output": "ผลผลิตของไขกระดูก",
+  "Innate depots produce cells 15% faster.": "คลังภูมิคุ้มกันโดยกำเนิดผลิตเซลล์เร็วขึ้น 15%",
+  "CD8 T-Cell Training": "ฝึกเซลล์ CD8 T",
+  "New CD8 T cells kill infected cells 20% faster.": "เซลล์ CD8 T ใหม่สังหารเซลล์ติดเชื้อเร็วขึ้น 20%",
+  "NK Activation (IL-15)": "กระตุ้นเซลล์ NK (IL-15)",
+  "New NK cells kill infected cells 20% faster.": "เซลล์ NK ใหม่สังหารเซลล์ติดเชื้อเร็วขึ้น 20%",
+  "Complement Boost": "เพิ่มพลังคอมพลีเมนต์",
+  "Complement at the lymph node destroys free virus faster.": "คอมพลีเมนต์ที่ต่อมน้ำเหลืองทำลายไวรัสอิสระได้เร็วขึ้น",
+  "Fibroblast Repair": "การซ่อมแซมของไฟโบรบลาสต์",
+  "Builder cells move, build and repair 20% faster.": "เซลล์ช่างเคลื่อนที่ สร้าง และซ่อมเร็วขึ้น 20%",
+  "Reinforce Lymph Node": "เสริมความแข็งแกร่งต่อมน้ำเหลือง",
+  "+60 max health for the lymph node and heal 60 now.": "+60 พลังชีวิตสูงสุดของต่อมน้ำเหลือง และฟื้นฟู 60 ทันที",
+  // map / HUD
+  "queued": "รอคิว", "waiting": "รอ", "OFF": "ปิด", "ON": "เปิด",
+  "Must touch a blood vessel": "ต้องติดหลอดเลือด",
+  "Blood glucose": "กลูโคสในเลือด", "Amino acids": "กรดอะมิโน", "Adaptation": "การปรับตัว", "Population": "ประชากร",
+  "Tutorial - no waves yet": "บทเรียน - ยังไม่มีระลอก",
+  "STARVING": "อดอยาก",
+  "Locked": "ล็อก",
+  "Free": "ฟรี",
+  "Your own cells are dividing": "เซลล์ของคุณเองกำลังแบ่งตัว",
+  "out of control!": "อย่างควบคุมไม่ได้!",
+  "They hide from SWAT cells.": "พวกมันซ่อนตัวจากเซลล์ SWAT",
+  " (drifted)": " (เปลี่ยนเล็กน้อย)", " (NEW - shift)": " (ใหม่ - shift)",
+  " (no Helper T: slow)": " (ไม่มี Helper T: ช้า)",
+  "Adaptive: not started - a Dendritic Cell must bring antigen": "แบบจำเพาะ: ยังไม่เริ่ม - เซลล์เดนไดรต์ต้องนำแอนติเจนมา",
+  "Adaptive: ACTIVE - CD8 T cells & antibodies": "แบบจำเพาะ: ทำงานแล้ว - เซลล์ CD8 T และแอนติบอดี",
+  "Adaptive: memory ready": "แบบจำเพาะ: ความจำพร้อมแล้ว",
+  "No special evasion tricks": "ไม่มีลูกเล่นหลบหนีพิเศษ",
+  "Calm - no active infection": "สงบ - ไม่มีการติดเชื้อ",
+  "none yet": "ยังไม่มี",
+  "Call now [N]": "เรียกเลย [N]",
+  // info panel
+  "The virus hijacked these cells: no work, only virus.": "ไวรัสยึดเซลล์เหล่านี้: ไม่ทำงาน ผลิตแต่ไวรัส",
+  "NK / CD8 T cells must destroy it (costs some tissue).": "เซลล์ NK / CD8 T ต้องทำลายมัน (เสียเนื้อเยื่อบางส่วน)",
+  "Antiviral state (interferon): hard to infect": "สภาวะต้านไวรัส (อินเตอร์เฟอรอน): ติดเชื้อยาก",
+  " + arteriole boost": " + ตัวเร่งการไหล",
+  "Target workers  -": "จำนวนเซลล์ช่างเป้าหมาย  -",
+  "Target workers  +": "จำนวนเซลล์ช่างเป้าหมาย  +",
+  "Right-click the map to set a rally point.": "คลิกขวาบนแผนที่เพื่อกำหนดจุดรวมพล",
+  "Demolish (50% refund) [Del]": "รื้อ (คืน 50%) [Del]",
+  "Cancel blueprint": "ยกเลิกแบบแปลน",
+  "Builders pick their own jobs: build > repair.": "เซลล์ช่างเลือกงานเอง: สร้าง > ซ่อม",
+  "Right-click: move there and guard.": "คลิกขวา: ไปที่นั่นและเฝ้าระวัง",
+  "Right-click a target: focus it.": "คลิกขวาที่เป้าหมาย: โฟกัสมัน",
+  "Resting (fed by the blood)": "พักผ่อน (เลือดหล่อเลี้ยง)",
+  "PAUSED  (SPACE to resume)": "หยุดชั่วคราว  (กด SPACE เพื่อเล่นต่อ)",
+  "Left-click to place (hold & drag for barriers)   Right-click / ESC to cancel": "คลิกซ้ายเพื่อวาง (กดค้างแล้วลากสำหรับกำแพง)   คลิกขวา / ESC เพื่อยกเลิก",
+  "WASD pan  -  drag to select cells  -  right-click to order  -  SPACE pause  -  TAB build menu  -  F select all  -  H home  -  M terms":
+    "WASD เลื่อนกล้อง  -  ลากเพื่อเลือกเซลล์  -  คลิกขวาเพื่อสั่ง  -  SPACE หยุดชั่วคราว  -  TAB เมนูก่อสร้าง  -  F เลือกทั้งหมด  -  H กลับฐาน  -  M ศัพท์",
+  // world labels
+  "The Core zaps nearby virus": "แกนกลางช็อตไวรัสที่อยู่ใกล้",
+  "killer mode": "โหมดนักฆ่า",
+  "Antibodies tag the virus": "แอนติบอดีติดป้ายไวรัส",
+  "Courier bags a virus sample for the Core": "เซลล์ส่งสารเก็บตัวอย่างไวรัสให้แกนกลาง",
+  // tutorial
+  "Look around: hold W A S D (or the arrow keys) to move the camera.": "มองไปรอบ ๆ: กด W A S D ค้างไว้ (หรือปุ่มลูกศร) เพื่อเลื่อนกล้อง",
+  "Your builder cells (hard hats!) build it for you. Just watch!": "เซลล์ช่างของคุณ (สวมหมวกนิรภัย!) จะสร้างให้ แค่ดูเฉย ๆ!",
+  "Food is flowing in! Blood glucose and amino acids now go up every second.": "อาหารไหลเข้ามาแล้ว! กลูโคสในเลือดและกรดอะมิโนเพิ่มขึ้นทุกวินาที",
+  "Your workers are building your defences. Watch them work...": "เซลล์ช่างกำลังสร้างแนวป้องกันของคุณ ดูพวกเขาทำงาน...",
+  "A small practice virus attack! Just watch what each cell does.": "ไวรัสโจมตีเพื่อฝึกซ้อมเล็กน้อย! ดูว่าแต่ละเซลล์ทำอะไร",
+  "Tutorial done! The first real wave comes soon. More cells unlock as you clear waves.": "จบบทเรียนแล้ว! ระลอกจริงแรกจะมาถึงเร็ว ๆ นี้ เซลล์ใหม่จะปลดล็อกเมื่อคุณกำจัดระลอกได้",
+  "Tutorial skipped. Learn (main menu) explains every cell.": "ข้ามบทเรียนแล้ว เมนู 'เรียนรู้' อธิบายทุกเซลล์",
+  "Start playing!": "เริ่มเล่น!", "Skip tutorial": "ข้ามบทเรียน",
+  "Slow motion - follow the labels on the map": "ภาพช้า - ดูป้ายบนแผนที่",
+  "Nearby vessel": "หลอดเลือดใกล้เคียง", "Click this tab": "คลิกแท็บนี้", "Click this card": "คลิกการ์ดนี้",
+  "Click here": "คลิกที่นี่", "This way": "ทางนี้", "Your Core": "แกนกลางของคุณ", "Being built": "กำลังสร้าง",
+  "Your food": "อาหารของคุณ", "Virus enters here": "ไวรัสเข้าทางนี้",
+  // scenes
+  "Core health - if it hits 0, you lose": "พลังชีวิตแกนกลาง - ถ้าเป็น 0 คุณแพ้",
+  "Virus comes in": "ไวรัสเข้ามา",
+  "Virus that gets through hurts the Core": "ไวรัสที่ผ่านเข้ามาทำร้ายแกนกลาง",
+  "First in, eats virus. Careless! Explodes into a sticky NET.": "บุกเข้าไปก่อนและกินไวรัส สะเพร่า! ระเบิดเป็นใยเหนียว (NET)",
+  "Eats virus and dead-cell bubbles. Killer mode near a General.": "กินไวรัสและฟองจากเซลล์ตาย เข้าโหมดนักฆ่าเมื่ออยู่ใกล้นายพล",
+  "Bags a virus sample and delivers it to the Core.": "เก็บตัวอย่างไวรัสแล้วส่งให้แกนกลาง",
+  "Checks MHC-I ID cards. Cells hiding their ID get taken down.": "ตรวจบัตร ID แบบ MHC-I เซลล์ที่ซ่อน ID จะถูกกำจัด",
+  "Trained for one strain. Orders infected cells to self-destruct.": "ฝึกมาเพื่อสายพันธุ์เดียว สั่งให้เซลล์ติดเชื้อทำลายตัวเอง",
+  "Shoots antibodies: tagged virus can't infect and is easy to eat.": "ยิงแอนติบอดี: ไวรัสที่ถูกติดป้ายจะติดเชื้อไม่ได้และถูกกินง่าย",
+  "Speeds up learning and powers up cells near its Command Post.": "เร่งการเรียนรู้และเพิ่มพลังเซลล์ที่อยู่ใกล้ศูนย์บัญชาการ",
+  "Builds and repairs. The virus can hijack it.": "สร้างและซ่อมแซม ไวรัสยึดมันได้",
+  "The enemy. Breaks into cells and turns them into virus factories.": "ศัตรู บุกเข้าเซลล์และเปลี่ยนให้เป็นโรงงานผลิตไวรัส",
+  "Blood vessel (dark red tiles)": "หลอดเลือด (ช่องสีแดงเข้ม)",
+  "Workers build for you": "เซลล์ช่างสร้างให้คุณ",
+  "1. Click a card, then the map": "1. คลิกการ์ด แล้วคลิกแผนที่",
+  "2. A worker walks over": "2. เซลล์ช่างเดินมา",
+  "3. It builds...": "3. กำลังสร้าง...",
+  "4. Done!": "4. เสร็จแล้ว!",
+  "1. Virus drifts in": "1. ไวรัสลอยเข้ามา",
+  "2. Gets inside a cell": "2. เข้าไปในเซลล์",
+  "3. Cell is hijacked": "3. เซลล์ถูกยึด",
+  "4. Bursts: more virus!": "4. แตก: ไวรัสเพิ่ม!",
+  "turns purple, makes virus": "เปลี่ยนเป็นสีม่วง ผลิตไวรัส",
+  "Interferon: blue-ring cells are hard to infect": "อินเตอร์เฟอรอน: เซลล์วงแหวนสีฟ้าติดเชื้อยาก",
+  "Kill purple cells before they burst": "กำจัดเซลล์สีม่วงก่อนที่มันจะแตก",
+  "Food": "อาหาร", "Eats virus": "กินไวรัส", "Delivers virus samples": "ส่งตัวอย่างไวรัส",
+  "+5 room for cells": "เพิ่มที่อยู่ให้เซลล์ +5", "Kills purple cells": "กำจัดเซลล์สีม่วง",
+  "Learning 2x faster": "เรียนรู้เร็วขึ้น 2 เท่า", "Learned killers & antibodies": "นักฆ่าและแอนติบอดีที่เรียนรู้แล้ว",
+  "BEFORE THE FIRST WAVE": "ก่อนระลอกแรก", "AFTER A FEW WAVES": "หลังผ่านไปไม่กี่ระลอก",
+  "Tip: keep at least 2 Capillaries - cells starve without glucose.": "เคล็ดลับ: มีเส้นเลือดฝอยอย่างน้อย 2 อัน - เซลล์จะอดอยากถ้าไม่มีกลูโคส",
+  "EAT": "กิน", "Free virus. Cleaners also eat dead-cell bubbles": "ไวรัสอิสระ เซลล์เก็บกวาดกินฟองจากเซลล์ตายด้วย",
+  "Phagocytosis: swallow it, dissolve it in acid, spit out the scraps.": "ฟาโกไซโทซิส: กลืน ละลายด้วยกรด แล้วคายเศษทิ้ง",
+  "TAG + SHOOT": "ติดป้าย + ยิง",
+  "Free virus of a learned strain (tagged = eaten 2x faster)": "ไวรัสอิสระของสายพันธุ์ที่เรียนรู้แล้ว (ติดป้าย = ถูกกินเร็วขึ้น 2 เท่า)",
+  "Antibodies block the virus and mark it for eating (opsonization).": "แอนติบอดีขวางไวรัสและทำเครื่องหมายให้ถูกกิน (opsonization)",
+  "KILL": "สังหาร",
+  "Infected (purple) cells - they pop into virus bubbles": "เซลล์ที่ติดเชื้อ (สีม่วง) - แตกเป็นฟองไวรัส",
+  "Killer cells order infected cells to self-destruct (apoptosis).": "เซลล์นักฆ่าสั่งให้เซลล์ติดเชื้อทำลายตัวเอง (apoptosis)",
+  "ZAP": "ช็อต", "Free virus near the Core": "ไวรัสอิสระใกล้แกนกลาง",
+  "Complement proteins punch holes in virus particles.": "โปรตีนคอมพลีเมนต์เจาะรูบนอนุภาคไวรัส",
+  "SHIELD": "โล่", "Neighbour cells resist infection (no damage)": "เซลล์ข้างเคียงต้านการติดเชื้อ (ไม่เสียหาย)",
+  "Interferon warns nearby cells to block viruses.": "อินเตอร์เฟอรอนเตือนเซลล์ใกล้เคียงให้ขวางไวรัส",
+  "INFECT": "ติดเชื้อ", "Your cells (they burst) and the Core": "เซลล์ของคุณ (แตกได้) และแกนกลาง",
+  "The virus hijacks cells and bursts them open (lysis).": "ไวรัสยึดเซลล์แล้วทำให้แตก (lysis)",
+  "WHO": "ใคร", "DOES": "ทำอะไร", "TO WHAT": "กับอะไร", "REAL LIFE": "ในชีวิตจริง",
+  "Infected cell": "เซลล์ติดเชื้อ", "Virus": "ไวรัส",
+  "INNATE: fast, attacks anything": "โดยกำเนิด: เร็ว โจมตีทุกอย่าง", "no memory": "ไม่มีความจำ",
+  "ADAPTIVE: slow at first, one strain": "แบบจำเพาะ: ช้าในตอนแรก จำเพาะสายพันธุ์เดียว", "remembers it next time": "จำได้ในครั้งหน้า",
+  "MEMORY": "ความจำ",
+  "1. Courier bags a sample": "1. เซลล์ส่งสารเก็บตัวอย่าง", "2. Carries it to the Core": "2. นำไปที่แกนกลาง",
+  "3. Core learns (takes time)": "3. แกนกลางเรียนรู้ (ใช้เวลา)", "4. Fighters for THAT strain": "4. นักสู้สำหรับสายพันธุ์นั้น",
+  "Same strain again? Memory makes the response fast. A vaccine gives memory early.": "สายพันธุ์เดิมกลับมา? ความจำทำให้ตอบสนองเร็ว วัคซีนให้ความจำล่วงหน้า",
+  "Move the camera": "เลื่อนกล้อง", "Left click": "คลิกซ้าย", "Select / place a building": "เลือก / วางสิ่งก่อสร้าง",
+  "Drag": "ลาก", "Select a group of cells": "เลือกเซลล์เป็นกลุ่ม", "Right click": "คลิกขวา", "Send cells / cancel": "สั่งเซลล์ / ยกเลิก",
+  "Pause": "หยุดชั่วคราว", "Game speed": "ความเร็วเกม", "Next build tab": "แท็บก่อสร้างถัดไป",
+  "Pick a building": "เลือกสิ่งก่อสร้าง", "Select all fighters": "เลือกนักสู้ทั้งหมด", "Jump to your Core": "ไปที่แกนกลาง",
+  "Call the next wave early": "เรียกระลอกถัดไปก่อนเวลา", "Simple / medical names": "ชื่อแบบง่าย / ชื่อทางการแพทย์",
+  "The game simplifies real biology. Be honest with your class:": "เกมนี้ทำให้ชีววิทยาจริงง่ายขึ้น โปรดบอกนักเรียนอย่างตรงไปตรงมา:",
+});
+
+// ===================== /THAI TRANSLATION LAYER =====================
 
 // -------------------------------- INPUT ---------------------------------
 const input = { mouse: [0, 0], keys: new Set() };
@@ -1801,6 +2341,7 @@ class Game {
   name(d) { return nm(d, this.medical); }
 
   text(s, font, color, x, y, align) {
+    s = tr(s);
     ctx.font = font.css;
     ctx.textBaseline = "top";
     const w = ctx.measureText(s).width;
@@ -1810,9 +2351,10 @@ class Game {
     ctx.fillText(s, x, y);
     return w;
   }
-  measure(s, font) { ctx.font = font.css; return ctx.measureText(s).width; }
+  measure(s, font) { s = tr(s); ctx.font = font.css; return ctx.measureText(s).width; }
 
   wrap(s, font, maxW) {
+    s = tr(s);
     if (TH_SEG && /[\u0E00-\u0E7F]/.test(s)) {
       const lines = [];
       let cur = "";
@@ -3429,8 +3971,8 @@ class Game {
         this.text(ln, this.f_small, col, x, ty); ty += 16;
       }
       ty += 2;
-      for (const tr of s.traits) {
-        for (const ln of this.wrap(TRAIT_TEXT[tr], this.f_small, box.w - 20).slice(0, 2)) {
+      for (const trait of s.traits) {
+        for (const ln of this.wrap(TRAIT_TEXT[trait], this.f_small, box.w - 20).slice(0, 2)) {
           if (ty < box.bottom - 16) this.text(ln, this.f_small, [230, 170, 220], x, ty);
           ty += 16;
         }
@@ -3692,17 +4234,17 @@ class Game {
     const items = ENCYCLOPEDIA.filter(e => e.tab === this.learn_tab);
     const cols = 4, gap = 16, tw = Math.floor((r.w - 60 - gap * (cols - 1)) / cols), th = 150;
     items.forEach((e, i) => {
-      const tr = new Rect(r.x + 30 + (i % cols) * (tw + gap), r.y + 134 + Math.floor(i / cols) * (th + gap), tw, th);
-      const hover = tr.collidepoint(...input.mouse);
-      drawRect(ctx, hover ? [54, 46, 64] : [34, 28, 40], tr, 0, 12);
-      drawRect(ctx, hover ? YELLOW : PANEL_EDGE, tr, 2, 12);
-      this.drawLearnIcon(e, tr.x + 64, tr.y + th / 2, 110);
-      const tx = tr.x + 128, w = tr.w - 138;
-      let y = tr.y + 34;
+      const tile = new Rect(r.x + 30 + (i % cols) * (tw + gap), r.y + 134 + Math.floor(i / cols) * (th + gap), tw, th);
+      const hover = tile.collidepoint(...input.mouse);
+      drawRect(ctx, hover ? [54, 46, 64] : [34, 28, 40], tile, 0, 12);
+      drawRect(ctx, hover ? YELLOW : PANEL_EDGE, tile, 2, 12);
+      this.drawLearnIcon(e, tile.x + 64, tile.y + th / 2, 110);
+      const tx = tile.x + 128, w = tile.w - 138;
+      let y = tile.y + 34;
       for (const ln of this.wrap(e.def.simple, this.f_bold, w).slice(0, 2)) { this.text(ln, this.f_bold, WHITE, tx, y); y += 21; }
       for (const ln of this.wrap(e.def.medical, this.f_small, w).slice(0, 3)) { this.text(ln, this.f_small, [170, 162, 186], tx, y); y += 17; }
-      this.text(tr("Read >"), this.f_small, hover ? YELLOW : CYAN, tx, tr.bottom - 26);
-      this.click_targets.push([tr, () => { this.learn_entry = e; }]);
+      this.text(tr("Read >"), this.f_small, hover ? YELLOW : CYAN, tx, tile.bottom - 26);
+      this.click_targets.push([tile, () => { this.learn_entry = e; }]);
     });
     this.text(trf("learnCount", `${items.length} entries - click one to learn about it.  Terms: `, items.length) +
               `${tr(this.medical ? "Medical" : "Simple")} [M]`,
@@ -3725,10 +4267,10 @@ class Game {
     this.text(e.def.medical, this.f_med, [180, 172, 196], x, y); y += 40;
     this.text(tr("IN THE GAME"), this.f_bold, YELLOW, x, y); y += 24;
     const bk = e.build || (BUILDINGS[e.key] ? e.key : null);
-    let game = this.learnGameText(e);
-    if (bk && e.build) game += ` Made by: ${this.name(BUILDINGS[bk])}.`;
+    let game = tr(this.learnGameText(e));
+    if (bk && e.build) game += tr(` Made by: ${this.name(BUILDINGS[bk])}.`);
     if (bk && UNLOCK_AT[bk] !== undefined)
-      game += UNLOCK_AT[bk] ? ` Unlocks after wave ${UNLOCK_AT[bk]}.` : " Available from the start.";
+      game += tr(UNLOCK_AT[bk] ? ` Unlocks after wave ${UNLOCK_AT[bk]}.` : " Available from the start.");
     for (const ln of this.wrap(game, this.f, w)) { this.text(ln, this.f, [215, 210, 225], x, y); y += 22; }
     y += 14;
     this.text(tr("REAL BIOLOGY"), this.f_bold, CYAN, x, y); y += 26;
@@ -3779,7 +4321,7 @@ class Game {
     // Language: label on the left, dropdown on the right
     const dd = new Rect(r.x + 230, r.y + 300, r.w - 290, 52);
     this.text(`${tr("Language")}:`, this.f_med, WHITE, r.x + 60, dd.centery - Math.floor(this.f_med.h / 2));
-    this.text(tr("Changes the language of menus and buttons."), this.f_small, GREY, r.centerx, r.y + 358, "c");
+    this.text(tr("Changes the game text language. Medical terms stay in English."), this.f_small, GREY, r.centerx, r.y + 358, "c");
     this.button([r.centerx - 100, r.bottom - 76, 200, 50], tr("Back"), () => { this.lang_open = false; this.state = this.prev_state; },
                 "primary", true, this.f_med);
     this.drawLangDropdown(dd);
