@@ -68,8 +68,17 @@ const UNLOCK_AT = {   // waves cleared before a building can be placed
 // Cancer finale: tuned so it can never be beaten (see Game.updateCancer).
 const CANCER_SEED_DELAY = 12, CANCER_HP = 40, CANCER_SPEED = 14, CANCER_CAP = 350;
 const CANCER_MUTATE_EVERY = 12;   // a fresh mutation pops up this often, however well you fight
-const CANCER_DIV = 8, CANCER_DIV_MIN = 3.5, CANCER_CORE_DPS = 0.06, CANCER_DRAIN = 0.04;
-const CANCER_TCELL_MULT = 0.25, CANCER_EXHAUST_MULT = 0.2, CANCER_DOOM_T = 150;
+const CANCER_DIV = 22, CANCER_DIV_MIN = 10, CANCER_CORE_DPS = 0.06, CANCER_DRAIN = 0.04;
+const CANCER_TCELL_MULT = 0.7, CANCER_EXHAUST_MULT = 0.5, CANCER_DOOM_T = 150;
+// Cancer comes in rounds. SWAT cells (NK, Killer T) can kill it, but each round it is tougher and hides better.
+// After a random 3-5 rounds it switches SWAT cells off completely (immune checkpoint) and can't be beaten.
+const CANCER_ROUND_HP = 0.45, CANCER_ROUND_GAP = 5, CANCER_ESCAPE_MIN = 3, CANCER_ESCAPE_MAX = 5;
+// Bacteria: single-celled invaders. Unlike a virus they need no host - they grow and divide by themselves.
+const BACT_FIRST_WAVE = 2;               // first wave that can carry bacteria
+const BACT_DIV = 15, BACT_CAP = 30;      // seconds between divisions, most alive at once
+const BACT_DPS = 5, BACT_CORE_DPS = 1.0; // damage per second to tissue / to the Core
+const NEUTRO_VS_BACT = 1.6;              // neutrophils are the bacteria specialists
+const BACT_COLOR = [120, 200, 80];
 const FIRST_WAVE_DELAY = 100.0;
 const LEASH = 420;
 // Blood supply: nutrients are delivered by the blood, not collected by cells.
@@ -206,6 +215,7 @@ const WORKER_DEF = {
 // Cast members that aren't spawnable units (for the Cell Codex and labels).
 const HELPER_DEF = { simple: "General Cell", medical: "Helper T Cell (CD4+)" };
 const VIRUS_DEF = { simple: "Virus", medical: "Virion (virus particle)" };
+const BACTERIUM_DEF = { simple: "Bacteria", medical: "Bacteria (prokaryotes)" };
 
 const BUILDINGS = {
   core: {
@@ -351,7 +361,7 @@ const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 const darker = (c, f = 0.6) => [Math.floor(c[0] * f), Math.floor(c[1] * f), Math.floor(c[2] * f)];
 const lerpCol = (a, b, t) => [0, 1, 2].map(i => Math.floor(a[i] + (b[i] - a[i]) * t));
 const css = (c, a) => a === undefined ? `rgb(${c[0]},${c[1]},${c[2]})` : `rgba(${c[0]},${c[1]},${c[2]},${a})`;
-const nm = (d, medical) => medical ? d.medical : tr(d.simple);
+const nm = (d, medical) => tr(medical ? d.medical : d.simple);
 const sgn = v => (v > 0) - (v < 0);
 const fmtSigned = (v, n) => (v >= 0 ? "+" : "") + v.toFixed(n);
 
@@ -529,7 +539,7 @@ function spiky(pos, r, spikes = 8, rot = 0) {
 // Static layers are painted once into small off-screen canvases (SPR_CACHE);
 // only moving parts (tentacles, virus spikes) are drawn every frame.
 const SPRITE_R = { neutrophil: 11, macrophage: 14, dendritic: 11, nk: 12, killer_t: 12,
-                   bcell: 12, helper: 12, worker: 9, virion: 8, cancer: 9, treg: 12, memory: 12 };
+                   bcell: 12, helper: 12, worker: 9, virion: 8, cancer: 9, treg: 12, memory: 12, bacterium: 8 };
 const OUTFIT = {
   neutrophil: "Army helmet + grenade belt",
   macrophage: "Janitor cap + hi-vis vest",
@@ -543,6 +553,7 @@ const OUTFIT = {
   cancer:     "Cracked hard hat + bandana (a builder gone rogue)",
   treg:       "Referee shirt + whistle",
   memory:     "Round glasses + notebook",
+  bacterium:  "Grumpy eyes + whip-like tail (flagellum)",
 };
 const INK = "rgba(16,9,20,0.92)";
 const SPR_CACHE = new Map();
@@ -893,6 +904,24 @@ const SPR_PAINT = {
       g.closePath(); g.fill();
     }
   },
+  // Bacterium: a grumpy green rod. Its whip-like tail (flagellum) is drawn live.
+  bacterium(g, r, s) {
+    const col = s.tagged ? lerpCol(BACT_COLOR, IFN_COL, 0.55) : BACT_COLOR;
+    const hw = r * 1.3, hh = r * 0.8;
+    const gr = g.createLinearGradient(0, -hh, 0, hh);
+    gr.addColorStop(0, css(lighten(col, 0.5))); gr.addColorStop(0.5, css(col)); gr.addColorStop(1, css(darker(col, 0.62)));
+    sprRound(g, -hw, -hh, hw * 2, hh * 2, hh); g.fillStyle = gr; g.fill(); sprOutline(g, r, 0.09);
+    sprRound(g, -hw * 0.9, -hh * 0.78, hw * 1.8, hh * 1.56, hh * 0.78);
+    g.lineWidth = Math.max(0.5, r * 0.05); g.strokeStyle = css(lighten(col, 0.55), 0.55); g.stroke();
+    for (const [x, y, k] of [[-0.62, 0.38, 0.09], [0.0, 0.5, 0.08], [-0.2, -0.52, 0.07], [0.7, 0.4, 0.07]])
+      sprDot(g, x * r, y * r, k * r, darker(col, 0.5));
+    if (r >= 5) {
+      g.beginPath();
+      for (let k = 0; k <= 8; k++) { const x = -r * 0.9 + k * r * 0.2, y = r * 0.12 + (k % 2 ? -1 : 1) * r * 0.09; if (k) g.lineTo(x, y); else g.moveTo(x, y); }
+      g.lineWidth = Math.max(0.5, r * 0.07); g.strokeStyle = css(darker(col, 0.55)); g.stroke();
+    }
+    sprEyes(g, r * 0.95, -r * 0.18, "angry");
+  },
   // Cancer: your own cell gone rogue - lumpy, two messy nuclei, cracked builder hat, bandana.
   cancer(g, r) {
     sprBlob(g, r, 7, 0.14, 2.1); sprGloss(g, [150, 34, 70], r); sprOutline(g, r);
@@ -988,6 +1017,11 @@ const SPR_ANIM = {
       }
       sprTentacle(g, r, pts, r * 0.24, r * 0.12, [255, 196, 70]);
     }
+  },
+  bacterium(g, r, t) {
+    const pts = [];
+    for (let j = 0; j <= 6; j++) pts.push([-r * (1.2 + j * 0.3), Math.sin(t * 9 + j * 1.1) * r * (0.05 + j * 0.05)]);
+    sprTentacle(g, r, pts, r * 0.18, r * 0.07, darker(BACT_COLOR, 0.55));
   },
   virion(g, r, t, o) {
     const base = o.color || FAMILY_COLORS.A;
@@ -1236,6 +1270,69 @@ class Virion {
   }
 }
 
+/** Bacteria: single-celled invaders. Unlike a virus they need no host: they grow and
+ *  divide by themselves (binary fission), chew on tissue and the Core, and are eaten by
+ *  phagocytes. NK and killer T cells can't see them - bacteria live outside cells. */
+class Bacterium {
+  constructor(x, y, hp, speed) {
+    this.isBacterium = true;
+    this.x = x; this.y = y;
+    this.max_hp = hp; this.hp = hp;
+    this.base_speed = speed;
+    this.speed = speed * R.uniform(0.85, 1.15);
+    this.color = BACT_COLOR;
+    this.strain = { antigen: "BAC", traits: [] };
+    this.neutralized = false;      // tagged by antibodies: slower and easy to eat
+    this.wander = R.uniform(0, TAU);
+    this.slow = 0;                 // > 0 while stuck in a neutrophil NET
+    this.div = BACT_DIV * R.uniform(0.7, 1.3);
+    this.ang = 0;
+  }
+  alive() { return this.hp > 0; }
+  hit(dmg, game) {
+    if (this.hp <= 0) return;
+    if (this.neutralized) dmg *= 2;
+    this.hp -= dmg;
+    if (this.hp <= 0) game.onBacteriumDestroyed(this);
+  }
+  consume() { this.hp = 0; }
+  update(dt, game) {
+    this.wander += R.uniform(-2.5, 2.5) * dt;
+    const spd = this.speed * (this.slow > 0 ? NET_SLOW : 1) * (this.neutralized ? 0.4 : 1);
+    this.slow = Math.max(0, this.slow - dt);
+    this.x = clamp(this.x, 2, WORLD_W - 2);
+    this.y = clamp(this.y, 2, WORLD_H - 2);
+    if (!this.neutralized) {
+      this.div -= dt;
+      if (this.div <= 0) { this.div = BACT_DIV * R.uniform(0.8, 1.2); game.divideBacterium(this); }
+    }
+    for (const w of game.workers) {     // nibble any tissue cell it bumps into
+      if (w.hp > 0 && Math.abs(w.x - this.x) < 9 && Math.abs(w.y - this.y) < 9) {
+        w.hp -= BACT_DPS * 0.5 * dt;
+        game.noteBacteriaChew();
+      }
+    }
+    const gx = Math.floor(this.x / TILE), gy = Math.floor(this.y / TILE);
+    if (game.bgrid[gy][gx] === game.core) { game.core.takeDamage(BACT_CORE_DPS * dt); return; }
+    const nxt = game.flowNext(gx, gy);
+    if (!nxt) return;
+    const tx = (nxt[0] + 0.5) * TILE + Math.cos(this.wander) * 8;
+    const ty = (nxt[1] + 0.5) * TILE + Math.sin(this.wander) * 8;
+    const ox = this.x, oy = this.y;
+    const cur = game.buildingAt(ox, oy);
+    moveToward(this, tx, ty, spd, dt, game);
+    const b = game.buildingAt(this.x, this.y);
+    if (b && b !== cur) {               // blocked by a building: stop and chew on it
+      this.x = ox; this.y = oy;
+      if (b === game.core) game.core.takeDamage(BACT_CORE_DPS * dt);
+      else b.takeDamage(BACT_DPS * dt);
+      game.noteBacteriaChew();
+    }
+    const dx = this.x - ox, dy = this.y - oy;
+    if (dx * dx + dy * dy > 1e-4) this.ang = Math.atan2(dy, dx);
+  }
+}
+
 /** Apoptotic bubbles: what's left after a killer cell makes an infected cell
  *  self-destruct. They trap the virus inside - a macrophage must eat them before
  *  they leak, or some virus escapes. */
@@ -1256,7 +1353,7 @@ class Debris {
 class CancerCell {
   constructor(x, y, game) {
     this.x = x; this.y = y;
-    this.max_hp = CANCER_HP;
+    this.max_hp = CANCER_HP * (1 + CANCER_ROUND_HP * game.cancer_round);
     this.hp = this.max_hp;
     this.div = CANCER_DIV * R.uniform(0.7, 1.3) * game.cancerDivMult();
     this.phase = R.uniform(0, TAU);
@@ -1394,22 +1491,26 @@ class Immune {
       game.fx.push({ kind: "hit", x: t.x, y: t.y, t: 0.15, life: 0.15, color: [255, 190, 120] });
       if (t.hp <= 0) game.onDebrisCleared(t);
     } else if (this.role === "eat") {
-      game.tutNote("eat", t.x, t.y, `${game.name(CELL_TYPES[this.key])} eats the virus`, WHITE);
-      t.hit(this.dmg * mult, game);
+      const bact = t instanceof Bacterium;
+      game.tutNote("eat", t.x, t.y, `${game.name(CELL_TYPES[this.key])} eats the ${bact ? "bacteria" : "virus"}`, WHITE);
+      t.hit(this.dmg * mult * (bact && this.key === "neutrophil" ? NEUTRO_VS_BACT : 1), game);
       game.fx.push({ kind: "hit", x: t.x, y: t.y, t: 0.15, life: 0.15, color: WHITE });
       if (this.key === "neutrophil" && R.random() < NEUTRO_CARELESS) game.carelessHit(this);
     } else if (this.role === "antibody") {
-      game.tutNote("ab", t.x, t.y, "Antibodies tag the virus", IFN_COL);
+      game.tutNote("ab", t.x, t.y, t instanceof Bacterium ? "Antibodies tag the bacteria" : "Antibodies tag the virus", IFN_COL);
       t.neutralized = true;
       t.hit(this.dmg * mult, game);
       this.cd = this.atk_cd * game.ab_cd_mult;
       game.fx.push({ kind: "shot", x: this.x, y: this.y, x2: t.x, y2: t.y, t: 0.2, life: 0.2, color: IFN_COL });
     } else if (this.role === "kill" && t instanceof CancerCell) {
       // cancer hides its MHC-I ID from T cells, and crowds of it exhaust immune cells
-      let m = this.key === "killer_t" ? CANCER_TCELL_MULT : 1.0;
+      // rounds make it hide better (Killer T lose the most); once it has escaped, nothing works
+      const rd = game.cancer_round;
+      let m = this.key === "killer_t" ? Math.max(0.2, CANCER_TCELL_MULT - 0.1 * rd) : Math.max(0.5, 1.0 - 0.1 * rd);
+      if (game.cancer_immune) m = 0;
       if (game.cancerCrowd(this.x, this.y)) { m *= CANCER_EXHAUST_MULT; game.noteExhaustion(); }
       t.hp -= this.dmg * mult * m;
-      game.fx.push({ kind: "hit", x: t.x, y: t.y, t: 0.15, life: 0.15, color: [255, 120, 150] });
+      game.fx.push({ kind: "hit", x: t.x, y: t.y, t: 0.15, life: 0.15, color: game.cancer_immune ? [150, 150, 160] : [255, 120, 150] });
       if (t.hp <= 0) game.fx.push({ kind: "pop", x: t.x, y: t.y, t: 0.4, life: 0.4, color: [200, 60, 110] });
     } else if (this.role === "kill") {
       let m = 1.0;
@@ -1513,6 +1614,9 @@ const HOWTO_CARDS = [
   { scene: "damage", title: "WHO FIGHTS WHAT",
     caption: "Free virus and infected cells need different fighters. Build both kinds!",
     real: "Innate cells attack anything. T and B cells only attack strains the lymph node has learned." },
+  { scene: "bacteria", title: "BACTERIA: THE OTHER ENEMY",
+    caption: "Bacteria grow and divide on their own. Kill them early or they snowball!",
+    real: "Bacteria are single living cells that need no host. Antibiotics kill bacteria, but they do nothing against viruses." },
   { scene: "adaptive", title: "LEARNING & MEMORY",
     caption: "Courier Cells carry a virus sample to the Core. Later, SWAT and Antibody cells appear for that strain.",
     real: "Dendritic cells show antigen to T cells in the lymph node. Memory cells make the next fight fast - like a vaccine." },
@@ -1618,12 +1722,20 @@ const ENCYCLOPEDIA = [
     "They inject their genes and turn the cell into a virus factory; when it is full, it bursts.",
     "They multiply and mutate very fast, so some mutants always survive better.",
     "Famous shapes: influenza (an egg), adenovirus (a dice with antennae), coronavirus (a crown), Ebola (a worm)." ] },
+  { tab: "Other", icon: "sprite", key: "bacterium", def: BACTERIUM_DEF,
+    game: "Grows and divides by itself - no host needed. Chews on tissue and the Core. Eaten by Soldier and Cleaner cells; Bodyguard and SWAT cells can't see it.", bio: [
+    "Bacteria are single-celled living things. They don't need a host - they feed and divide on their own.",
+    "Many bacteria are harmless or even helpful, like those in your gut. Others cause disease, such as strep throat or tuberculosis.",
+    "Neutrophils rush to bacterial infections first - pus is mostly dead neutrophils.",
+    "Phagocytes eat bacteria. Antibodies and complement mark them and punch holes in them, so they are eaten faster.",
+    "Antibiotics kill bacteria but do nothing against viruses. Using them too much lets bacteria evolve resistance." ] },
   { tab: "Other", icon: "sprite", key: "cancer", def: CANCER_DEF,
     game: "Your own cells, gone rogue.", bio: [
     "Cancer starts when one of your own cells mutates and divides out of control.",
     "Many cancer cells stop showing MHC class I, which hides them from Killer T cells.",
     "Tumours steal nutrients and can wear out the immune cells around them.",
-    "The immune system destroys many early cancers, but sometimes doctors must help (surgery, chemo, immunotherapy)." ] },
+    "The immune system destroys many early cancers, but sometimes doctors must help (surgery, chemo, immunotherapy).",
+    "Some cancers switch Killer T and NK cells off using 'checkpoint' proteins such as PD-L1. Checkpoint-inhibitor drugs block this so the cells can attack again." ] },
   { tab: "Other", icon: "antibody", key: "antibody", def: AB_DEF,
     game: "Fired by Antibody Gunners: tagged virus is slowed, can't infect, and is eaten 2x faster.", bio: [
     "Antibodies are mindless protein bundles with pincers - a 'hashtag of death' for enemies.",
@@ -1701,6 +1813,7 @@ const TUTORIAL_STEPS = [
     },
     check: g => g.tut.demo_started && !g.demo_wave },
   { card: "damage" },
+  { card: "bacteria" },
   { card: "order", last: true },
 ];
 
@@ -1740,6 +1853,7 @@ const TH = {
 const TH_FMT = {
   learnCount: n => `${n} รายการ - คลิกเพื่ออ่าน  คำศัพท์: `,
   waveFell: w => `ไวรัสบุกทำลายต่อมน้ำเหลืองของคุณในระลอกที่ ${w}`,
+  waveFellBact: w => `แบคทีเรียบุกทำลายต่อมน้ำเหลืองของคุณในระลอกที่ ${w}`,
   cleared: w => `กำจัดการติดเชื้อครั้งที่ ${w} สำเร็จ`,
   ap: n => `แต้มปรับตัว: ${n}`,
   memory: s => "ความจำตอนนี้ครอบคลุม: " + s,
@@ -1793,6 +1907,8 @@ const TH_RULES = [
   [/^After wave (\d+)$/, "หลังระลอก $1"],
   [/^(Core|Lymph node) (\d+)\/(\d+)$/, "$1 $2/$3"],
   [/^Rogue cells: (\d+)$/, "เซลล์เกเร: $1"],
+  [/^Round (\d+) - hiding from SWAT$/, "รอบ $1 - ซ่อนจาก SWAT"],
+  [/^Cancer round (\d+) cleared\.\.\. but it mutated and came back tougher!$/, "กำจัดมะเร็งรอบ $1 ได้แล้ว... แต่มันกลายพันธุ์และกลับมาแกร่งกว่าเดิม!"],
   [/^Strain (\S+)( \(drifted\)| \(NEW - shift\))?$/, "สายพันธุ์ $1$2"],
   [/^Adaptive: activating, (\d+)s( \(no Helper T: slow\))?$/, "แบบจำเพาะ: กำลังกระตุ้น $1 วินาที$2"],
   [/^Immune memory: (.*)$/, "ความจำภูมิคุ้มกัน: $1"],
@@ -1813,6 +1929,10 @@ const TH_RULES = [
   [/^Production: (ON|OFF)$/, "การผลิต: $1"],
   [/^(\d+) immune cells? selected$/, "เลือกเซลล์ภูมิคุ้มกันแล้ว $1 ตัว"],
   [/^(\d+) AP$/, "$1 แต้ม"],
+  [/^Bacteria! (\d+) bacteria are coming - they divide by themselves, so kill them fast\.$/, "แบคทีเรีย! แบคทีเรีย $1 ตัวกำลังมา - มันแบ่งตัวเองได้ ต้องรีบกำจัด"],
+  [/^Wave (\d+): (\d+) virus, (\d+) infected, (\d+) bacteria$/, "ระลอก $1: ไวรัส $2, ติดเชื้อ $3, แบคทีเรีย $4"],
+  [/^(.+) eats the bacteria$/, "$1 กินแบคทีเรีย"],
+  [/^Bacteria are eating your tissue! Send (.+) and (.+)\.$/, "แบคทีเรียกำลังกินเนื้อเยื่อของคุณ! ส่ง $1 และ $2 ไปจัดการ"],
   // tutorial + cards + scenes
   [/^This is your (.+)\. Keep the virus away from it!$/, "นี่คือ $1 ของคุณ ห้ามให้ไวรัสเข้าใกล้!"],
   [/^Blood brings food\. Build a (.+) touching a red \(pulsing\) vessel\.$/, "เลือดนำอาหารมาให้ สร้าง $1 ให้ติดกับหลอดเลือดสีแดง (ที่กะพริบ)"],
@@ -1830,7 +1950,7 @@ const TH_RULES = [
   [/^(.+) attacks the infected cell$/, "$1 โจมตีเซลล์ติดเชื้อ"],
   [/^(.+) \(touches the vessel\)$/, "$1 (ติดกับหลอดเลือด)"],
   [/^Some of your own cells mutated and began dividing out of control\..*Read more in Learn\.$/s,
-    "เซลล์ของคุณบางส่วนกลายพันธุ์และเริ่มแบ่งตัวอย่างควบคุมไม่ได้ พวกมันซ่อนบัตร ID จากเซลล์ SWAT ทำให้เซลล์ภูมิคุ้มกันอ่อนล้า และขโมยน้ำตาลในเลือด ไม่มีอาณานิคมไหนชนะศึกนี้ได้ - ในชีวิตจริงระบบภูมิคุ้มกันทำลายมะเร็งระยะแรกได้มาก แต่บางครั้งทำไม่ได้และแพทย์ต้องช่วย อ่านเพิ่มเติมในเมนู 'เรียนรู้'"],
+    "เซลล์ของคุณบางส่วนกลายพันธุ์และเริ่มแบ่งตัวอย่างควบคุมไม่ได้ พวกมันซ่อนบัตร ID จากเซลล์ SWAT กลับมาแข็งแกร่งขึ้นทุกรอบ ทำให้เซลล์ภูมิคุ้มกันอ่อนล้า ขโมยน้ำตาลในเลือด และสุดท้ายก็ปิดการทำงานของเซลล์ SWAT ถาวร ไม่มีอาณานิคมไหนชนะศึกนี้ได้ - ในชีวิตจริงระบบภูมิคุ้มกันทำลายมะเร็งระยะแรกได้มาก แต่บางครั้งทำไม่ได้และแพทย์ต้องช่วย อ่านเพิ่มเติมในเมนู 'เรียนรู้'"],
 ];
 const TH_CACHE = new Map();
 /** Translate UI text. Exact strings come from TH; messages with numbers/names go through TH_RULES.
@@ -2099,7 +2219,8 @@ function tr(s) {
       "มะเร็งเริ่มเมื่อเซลล์ของคุณเองตัวหนึ่งกลายพันธุ์และแบ่งตัวอย่างควบคุมไม่ได้",
       "เซลล์มะเร็งจำนวนมากหยุดแสดง MHC class I ซึ่งซ่อนมันจากเซลล์ Killer T",
       "เนื้องอกขโมยสารอาหารและทำให้เซลล์ภูมิคุ้มกันรอบข้างอ่อนล้าได้",
-      "ระบบภูมิคุ้มกันทำลายมะเร็งระยะแรกได้มาก แต่บางครั้งแพทย์ต้องช่วย (ผ่าตัด เคมีบำบัด ภูมิคุ้มกันบำบัด)"],
+      "ระบบภูมิคุ้มกันทำลายมะเร็งระยะแรกได้มาก แต่บางครั้งแพทย์ต้องช่วย (ผ่าตัด เคมีบำบัด ภูมิคุ้มกันบำบัด)",
+      "มะเร็งบางชนิดปิดการทำงานของเซลล์ Killer T และ NK ด้วยโปรตีน 'จุดตรวจ' เช่น PD-L1 ยากลุ่มยับยั้งจุดตรวจ (checkpoint inhibitor) ปิดกั้นกลไกนี้เพื่อให้เซลล์กลับมาโจมตีได้อีก"],
     antibody: ["ยิงโดยพลปืนแอนติบอดี: ไวรัสที่ติดป้ายจะช้าลง ติดเชื้อไม่ได้ และถูกกินเร็วขึ้น 2 เท่า",
       "แอนติบอดีคือกลุ่มโปรตีนไร้สมองที่มีก้ามปู - 'แฮชแท็กแห่งความตาย' สำหรับศัตรู",
       "ฟาโกไซต์จับ 'ก้น' ของแอนติบอดีเพื่อกินศัตรู ก้นนั้นยังเรียกระบบคอมพลีเมนต์ด้วย",
@@ -2158,6 +2279,8 @@ Object.assign(TH, {
   "Antigenic SHIFT: a brand-new strain your immune system has never seen!": "แอนติเจนชิฟต์ (SHIFT): สายพันธุ์ใหม่เอี่ยมที่ภูมิคุ้มกันของคุณไม่เคยเจอ!",
   "Something is wrong... some of your own cells are dividing out of control!": "มีบางอย่างผิดปกติ... เซลล์ของคุณบางส่วนกำลังแบ่งตัวอย่างควบคุมไม่ได้!",
   "Another cell mutated...": "อีกเซลล์หนึ่งกลายพันธุ์...",
+  "The cancer has switched off your SWAT cells! Nothing can stop it now.": "มะเร็งปิดการทำงานของเซลล์ SWAT ของคุณแล้ว! ไม่มีอะไรหยุดมันได้อีก",
+  "SWAT cells switched off!": "เซลล์ SWAT ถูกปิดการทำงาน!",
   "Uneaten bubbles leaked virus! Keep Cleaner Cells near the fight.": "ฟองที่ไม่ถูกกินปล่อยไวรัสรั่วออกมา! ให้เซลล์เก็บกวาดอยู่ใกล้การต่อสู้",
   "Out of bounds.": "อยู่นอกพื้นที่",
   "That space is occupied.": "พื้นที่นั้นมีของอยู่แล้ว",
@@ -2299,6 +2422,77 @@ Object.assign(TH, {
   "The game simplifies real biology. Be honest with your class:": "เกมนี้ทำให้ชีววิทยาจริงง่ายขึ้น โปรดบอกนักเรียนอย่างตรงไปตรงมา:",
 });
 
+
+// ---------- Thai: medical names (Thai first, English term in brackets), bacteria ----------
+(() => {
+  const put = (en, th) => { if (typeof en === "string" && en) TH[en] = th; };
+  put(CELL_TYPES.neutrophil.medical, "นิวโทรฟิล (Neutrophil)");
+  put(CELL_TYPES.macrophage.medical, "แมคโครฟาจ (Macrophage)");
+  put(CELL_TYPES.dendritic.medical, "เซลล์เดนไดรต์ (Dendritic Cell)");
+  put(CELL_TYPES.nk.medical, "เซลล์เพชฌฆาตธรรมชาติ (NK Cell)");
+  put(CELL_TYPES.killer_t.medical, "เซลล์ T นักฆ่า (Killer T, CD8+)");
+  put(CELL_TYPES.bcell.medical, "พลาสมาเซลล์ (Plasma Cell, B cell)");
+  put(WORKER_DEF.medical, "ไฟโบรบลาสต์ (เซลล์เนื้อเยื่อ)");
+  put(HELPER_DEF.medical, "เซลล์ T ผู้ช่วย (Helper T, CD4+)");
+  put(VIRUS_DEF.medical, "ไวเรียน (อนุภาคไวรัส)");
+  put(BUILDINGS.core.medical, "ต่อมน้ำเหลือง (Lymph Node)");
+  put(BUILDINGS.hub.medical, "เครือข่ายเส้นเลือดฝอย (Capillary Bed)");
+  put(BUILDINGS.arteriole.medical, "อาร์เทอริโอล (หลอดเลือดขยาย)");
+  put(BUILDINGS.liver.medical, "ก้อนตับ (สร้างกลูโคสใหม่)");
+  put(BUILDINGS.house.medical, "แหล่งไขกระดูก (Bone-Marrow Niche)");
+  put(BUILDINGS.barrier.medical, "เยื่อบุผิว (Epithelial Barrier)");
+  put(BUILDINGS.neu_nest.medical, "ไขกระดูก: นิวโทรฟิล");
+  put(BUILDINGS.mac_nest.medical, "คลังแมคโครฟาจ (Macrophage Depot)");
+  put(BUILDINGS.dc_niche.medical, "แหล่งเซลล์เดนไดรต์ (Dendritic Niche)");
+  put(BUILDINGS.nk_den.medical, "แหล่งเซลล์ NK (NK Niche)");
+  put(BUILDINGS.helper.medical, "กลุ่มเซลล์ T ผู้ช่วย (Helper T, CD4+)");
+  put(BUILDINGS.thymus.medical, "เขตเซลล์ T (T-Cell Zone)");
+  put(BUILDINGS.bcenter.medical, "ศูนย์เจริมินัล (Germinal Center)");
+  put(TREG_DEF.medical, "เซลล์ T ควบคุม (Regulatory T Cell)");
+  put(MEMORY_DEF.medical, "เซลล์ B และ T ความจำ (Memory B & T)");
+  put(CANCER_DEF.medical, "เซลล์มะเร็ง (Cancer Cell)");
+  put(AB_DEF.medical, "แอนติบอดี (IgM, IgG, IgA, IgE)");
+  put(IFN_DEF.medical, "อินเตอร์เฟอรอน (ไซโตไคน์สัญญาณเตือน)");
+  put(COMP_DEF.medical, "ระบบคอมพลีเมนต์ (Complement System)");
+  put(BACTERIUM_DEF.simple, "แบคทีเรีย");
+  put(BACTERIUM_DEF.medical, "แบคทีเรีย (โพรคาริโอต)");
+  put(OUTFIT.bacterium, "ตาดุ + หางเหมือนแส้ (แฟลเจลลัม)");
+  Object.assign(TH, { "Lymph node": "ต่อมน้ำเหลือง", "LYMPH NODE": "ต่อมน้ำเหลือง", "Lymph Node": "ต่อมน้ำเหลือง (Lymph Node)" });
+
+  const bac = ENCYCLOPEDIA.find(e => e.key === "bacterium");
+  if (bac) {
+    put(bac.game, "เติบโตและแบ่งตัวเองได้ ไม่ต้องมีเจ้าบ้าน กัดกินเนื้อเยื่อและแกนกลาง ถูกเซลล์ทหารและเซลล์เก็บกวาดกิน ส่วนเซลล์บอดี้การ์ดและ SWAT มองไม่เห็นมัน");
+    const bio = [
+      "แบคทีเรียเป็นสิ่งมีชีวิตเซลล์เดียว ไม่ต้องอาศัยเจ้าบ้าน - มันกินอาหารและแบ่งตัวได้เอง",
+      "แบคทีเรียหลายชนิดไม่เป็นอันตรายหรือมีประโยชน์ เช่นที่อยู่ในลำไส้ของคุณ ส่วนชนิดอื่นก่อโรค เช่น คอหอยอักเสบจากสเตรปโตคอกคัสและวัณโรค",
+      "นิวโทรฟิลรีบไปที่การติดเชื้อแบคทีเรียก่อน - หนองส่วนใหญ่คือนิวโทรฟิลที่ตายแล้ว",
+      "ฟาโกไซต์กินแบคทีเรีย แอนติบอดีและคอมพลีเมนต์ทำเครื่องหมายและเจาะรูบนมัน จึงถูกกินเร็วขึ้น",
+      "ยาปฏิชีวนะฆ่าแบคทีเรียได้ แต่ไม่มีผลต่อไวรัส การใช้มากเกินไปทำให้แบคทีเรียวิวัฒนาการจนดื้อยา",
+    ];
+    bac.bio.forEach((s, i) => put(s, bio[i]));
+  }
+  const bc = HOWTO_CARDS.find(c => c.scene === "bacteria");
+  if (bc) {
+    put(bc.title, "แบคทีเรีย: ศัตรูอีกชนิด");
+    put(bc.caption, "แบคทีเรียเติบโตและแบ่งตัวเองได้ รีบกำจัดก่อนที่จะเพิ่มจนควบคุมไม่อยู่!");
+    put(bc.real, "แบคทีเรียคือเซลล์เดียวที่มีชีวิตและไม่ต้องมีเจ้าบ้าน ยาปฏิชีวนะฆ่าแบคทีเรียได้ แต่ไม่ช่วยอะไรกับไวรัส");
+  }
+  Object.assign(TH, {
+    "1. One bacterium": "1. แบคทีเรียหนึ่งตัว",
+    "2. It splits in two": "2. แบ่งตัวเป็นสองตัว",
+    "3. Doubling again and again!": "3. เพิ่มเป็นสองเท่าซ้ำแล้วซ้ำอีก!",
+    "Kill them early or they snowball!": "กำจัดให้เร็ว ไม่งั้นจะเพิ่มทวีคูณ!",
+    "WHO FIGHTS BACTERIA?": "ใครสู้กับแบคทีเรีย?",
+    "Eat them - best against bacteria!": "กินมัน - เก่งที่สุดกับแบคทีเรีย!",
+    "Eat them": "กินมัน",
+    "Tag them with antibodies": "ติดป้ายด้วยแอนติบอดี",
+    "Check infected cells, not bacteria": "ตรวจเซลล์ติดเชื้อ ไม่ใช่แบคทีเรีย",
+    "Only attack infected cells": "โจมตีเฉพาะเซลล์ติดเชื้อ",
+    "Antibodies tag the bacteria": "แอนติบอดีติดป้ายแบคทีเรีย",
+    "Bacteria are coming in the next wave!": "ระลอกหน้ามีแบคทีเรียมาด้วย!",
+  });
+})();
+
 // ===================== /THAI TRANSLATION LAYER =====================
 
 // -------------------------------- INPUT ---------------------------------
@@ -2422,14 +2616,18 @@ class Game {
   addRes(r, amt) { this.res[r] += amt; this.rate_acc[r] += amt; }
 
   // ---- searches ----
+  /** Nearest free enemy (virus or bacterium). Antibody cells need a learned strain for virus
+   *  but can tag any bacterium. */
   nearestVirion(pos, maxRange, preferTagged = false, antibody = false) {
     let best = null, bd = maxRange;
-    for (const v of this.virions) {
-      if (!v.alive()) continue;
-      if (antibody && (v.neutralized || !this.active.has(v.strain.antigen))) continue;
-      let d = dist(pos, [v.x, v.y]);
-      if (preferTagged && v.neutralized) d *= 0.6;
-      if (d < bd) { best = v; bd = d; }
+    for (const group of [this.virions, this.bacteria]) {
+      for (const v of group) {
+        if (!v.alive()) continue;
+        if (antibody && (v.neutralized || (!v.isBacterium && !this.active.has(v.strain.antigen)))) continue;
+        let d = dist(pos, [v.x, v.y]);
+        if (preferTagged && v.neutralized) d *= 0.6;
+        if (d < bd) { best = v; bd = d; }
+      }
     }
     return best;
   }
@@ -2506,7 +2704,7 @@ class Game {
   }
   /** Division gets faster the longer the cancer grows. */
   cancerDivMult() {
-    return Math.max(CANCER_DIV_MIN / CANCER_DIV, 1 - this.cancer_t / 240);
+    return Math.max(CANCER_DIV_MIN / CANCER_DIV, 1 - this.cancer_t / 240) * Math.max(0.6, 1 - 0.1 * this.cancer_round);
   }
   unlocked(key) {
     return !!this.tut || this.cleared >= (UNLOCK_AT[key] || 0);
@@ -2514,7 +2712,7 @@ class Game {
   targetAlive(t, unit) {
     if (t instanceof CancerCell) return t.alive() && unit.role === "kill";
     if (t instanceof Debris) return t.alive() && unit.key === "macrophage";
-    if (t instanceof Virion) return t.alive() && (unit.role === "eat" || unit.role === "antibody");
+    if (t instanceof Virion || t instanceof Bacterium) return t.alive() && (unit.role === "eat" || unit.role === "antibody");
     if (t instanceof Worker) return t.alive() && !!t.strain && unit.role === "kill";
     return this.buildings.includes(t) && !!t.strain && unit.role === "kill";
   }
@@ -2572,12 +2770,17 @@ class Game {
     this.active_entries = [];
 
     this.buildings = []; this.workers = []; this.units = []; this.virions = [];
+    this.bacteria = []; this.bact_queue = []; this.bact_t = 0; this.next_bacteria = 0;
     this.debris = []; this.nets = [];
     this.cancers = [];
     this.cancer_stage = false;   // the finale: own cells turn cancerous (never announced)
     this.cancer_t = 0;           // seconds since the finale wave started
     this.cancer_seeded = false;
     this.cancer_empty_t = 0;
+    this.cancer_round = 0;       // cancer rounds beaten so far
+    this.cancer_escape = R.randint(CANCER_ESCAPE_MIN, CANCER_ESCAPE_MAX);   // round after which it switches SWAT cells off
+    this.cancer_immune = false;  // true: NK and Killer T can no longer hurt it
+    this.cancer_imm_t = 0;
     this.exhaust_noted = false;
     this.cleared = 0;           // waves cleared: drives unlocks
     this.new_unlocks = [];       // building keys unlocked by the last cleared wave
@@ -2929,6 +3132,22 @@ class Game {
     this.core.takeDamage(v.strain.core_dmg);
     this.presentAntigen(v.strain.antigen, "lymph");
   }
+  onBacteriumDestroyed(b) {
+    this.stats.killed++;
+    this.ap += 0.25;
+    this.fx.push({ kind: "pop", x: b.x, y: b.y, t: 0.35, life: 0.35, color: BACT_COLOR });
+  }
+  /** Binary fission: one bacterium becomes two (up to BACT_CAP alive at once). */
+  divideBacterium(b) {
+    if (this.bacteria.length >= BACT_CAP) return;
+    const a = R.uniform(0, TAU);
+    this.bacteria.push(new Bacterium(b.x + Math.cos(a) * 9, b.y + Math.sin(a) * 9, b.max_hp, b.base_speed));
+    this.fx.push({ kind: "pop", x: b.x, y: b.y, t: 0.3, life: 0.3, color: BACT_COLOR });
+  }
+  noteBacteriaChew() {
+    this.alert(`Bacteria are eating your tissue! Send ${this.name(CELL_TYPES.neutrophil)} and ${this.name(CELL_TYPES.macrophage)}.`,
+               ORANGE, "bactchew", 25);
+  }
   onVirionDestroyed(v) {
     this.stats.killed++;
     this.ap += 0.25;
@@ -2992,6 +3211,9 @@ class Game {
     const k = Math.min(1 + Math.floor(this.wave / 3), 4);
     this.next_entries = sample(this.entries.length, k);
     const w = this.wave + 1;
+    // bacteria join every third wave from wave 2, plus some later ones; never in the cancer finale
+    const bact = w >= BACT_FIRST_WAVE && w < CANCER_WAVE && (w % 3 === 2 || (w >= 8 && R.random() < 0.35));
+    this.next_bacteria = bact ? Math.trunc((3 + w * 1.1) * this.diff.wave_mult) : 0;
     let change = null;
     if (this.family === null) {
       this.family = "A"; this.variant = 1; change = "new";
@@ -3029,9 +3251,14 @@ class Game {
     this.spawn_queue = [];
     for (let i = 0; i < n; i++) this.spawn_queue.push(this.active_entries[i % this.active_entries.length]);
     this.spawn_t = 0;
+    this.bact_queue = [];
+    const nb = this.cancer_stage ? 0 : this.next_bacteria;
+    for (let i = 0; i < nb; i++) this.bact_queue.push(this.active_entries[i % this.active_entries.length]);
+    this.bact_t = 4;
     const names = this.active_entries.map(i => this.entries[i].name).join(", ");
     const ag = this.cur_strain.antigen;
     this.alert(`WAVE ${this.wave}: Strain ${ag} (${n} particles) entering from ${names}!`, RED);
+    if (nb) this.alert(`Bacteria! ${nb} bacteria are coming - they divide by themselves, so kill them fast.`, BACT_COLOR);
     const ch = this.cur_strain.change;
     if (ch === "drift") this.alert("Antigenic DRIFT: the virus changed slightly - old antibodies fit less well.", ORANGE);
     else if (ch === "shift") this.alert("Antigenic SHIFT: a brand-new strain your immune system has never seen!", ORANGE);
@@ -3092,8 +3319,16 @@ class Game {
       this.virions.push(new Virion(this.cur_strain, x, y));
       this.spawn_t = 0.5 / Math.sqrt(Math.max(1, this.active_entries.length));
     }
+    this.bact_t -= dt;
+    if (this.bact_queue.length && this.bact_t <= 0) {
+      const e = this.entries[this.bact_queue.shift()];
+      const x = clamp(e.x + R.uniform(-14, 14), 4, WORLD_W - 4);
+      const y = clamp(e.y + R.uniform(-14, 14), 4, WORLD_H - 4);
+      this.bacteria.push(new Bacterium(x, y, (14 + this.wave * 2.2) * this.diff.hp_mult, 30 + this.wave * 1.0));
+      this.bact_t = 0.9;
+    }
     if (!this.spawn_queue.length && !this.virions.length && !this.infectedCells().length &&
-        !this.debris.length && !this.cancer_stage) this.waveCleared();
+        !this.debris.length && !this.bact_queue.length && !this.bacteria.length && !this.cancer_stage) this.waveCleared();
   }
 
   // ============================ cancer finale ============================
@@ -3104,21 +3339,39 @@ class Game {
     this.cancer_t += dt;
     if (!this.cancer_seeded && this.cancer_t >= CANCER_SEED_DELAY) {
       this.cancer_seeded = true;
-      for (let i = 0; i < 2; i++) this.seedCancer();
+      for (let i = 0; i < 1; i++) this.seedCancer();
       this.alert("Something is wrong... some of your own cells are dividing out of control!", RED);
     }
     if (!this.cancer_seeded) return;
     for (const c of [...this.cancers]) c.update(dt, this);
     Game.separate(this.cancers, 12);
     this.cancers = this.cancers.filter(c => c.alive());
-    this.cancer_empty_t += dt;
-    if (this.cancer_empty_t > (this.cancers.length ? CANCER_MUTATE_EVERY : 4)) {
-      this.cancer_empty_t = 0;
-      this.seedCancer();
-      this.alert("Another cell mutated...", RED, "mutate", 15);
+    if (!this.cancer_immune) {
+      if (!this.cancers.length) {          // round beaten: after a short pause it comes back stronger
+        this.cancer_empty_t += dt;
+        if (this.cancer_empty_t > CANCER_ROUND_GAP) {
+          this.cancer_empty_t = 0;
+          this.cancer_round++;
+          if (this.cancer_round >= this.cancer_escape) {
+            this.cancer_immune = true;
+            this.alert("The cancer has switched off your SWAT cells! Nothing can stop it now.", RED, "escape", 1);
+          } else {
+            this.alert(`Cancer round ${this.cancer_round} cleared... but it mutated and came back tougher!`, ORANGE, "round", 1);
+          }
+          for (let i = 0; i < 1 + this.cancer_round; i++) this.seedCancer();
+        }
+      } else this.cancer_empty_t = 0;
+    } else {
+      this.cancer_imm_t += dt;
+      this.cancer_empty_t += dt;
+      if (this.cancer_empty_t > CANCER_MUTATE_EVERY) {
+        this.cancer_empty_t = 0;
+        this.seedCancer();
+        this.alert("Another cell mutated...", RED, "mutate", 15);
+      }
+      if (this.cancer_imm_t > CANCER_DOOM_T)
+        this.core.takeDamage((this.cancer_imm_t - CANCER_DOOM_T) * 0.08 * dt);
     }
-    if (this.cancer_t > CANCER_DOOM_T + CANCER_SEED_DELAY)
-      this.core.takeDamage((this.cancer_t - CANCER_DOOM_T - CANCER_SEED_DELAY) * 0.08 * dt);
   }
   /** A random healthy building or tissue cell turns cancerous. */
   seedCancer() {
@@ -3242,11 +3495,15 @@ class Game {
     for (const w of this.workers) w.update(dt, this);
     for (const u of this.units) u.update(dt, this);
     for (const v of this.virions) if (v.alive()) v.update(dt, this);
+    for (const b of [...this.bacteria]) if (b.alive()) b.update(dt, this);
 
     for (const n of this.nets) {
       n.t -= dt;
       for (const v of this.virions) {
         if (v.alive() && dist([n.x, n.y], [v.x, v.y]) <= n.r) { v.slow = 0.3; v.hit(NET_DPS * dt, this); }
+      }
+      for (const b of this.bacteria) {   // NETs mostly fight bacteria in real life
+        if (b.alive() && dist([n.x, n.y], [b.x, b.y]) <= n.r) { b.slow = 0.3; b.hit(NET_DPS * 1.5 * dt, this); }
       }
     }
     this.nets = this.nets.filter(n => n.t > 0);
@@ -3269,6 +3526,7 @@ class Game {
 
     Game.separate(this.units, 20);
     Game.separate(this.virions, 11);
+    Game.separate(this.bacteria, 10);
 
     for (const b of [...this.buildings]) {
       if (b.hp <= 0) {
@@ -3292,6 +3550,7 @@ class Game {
     this.workers = this.workers.filter(w => w.alive());
     this.units = this.units.filter(u => u.alive());
     this.virions = this.virions.filter(v => v.alive());
+    this.bacteria = this.bacteria.filter(b => b.alive());
     if (this.sel_worker && !this.sel_worker.alive()) this.sel_worker = null;
 
     this.updateWaves(dt);
@@ -3448,6 +3707,7 @@ class Game {
       if (sel.length) {
         let target = null;
         for (const v of this.virions) if (dist([wx, wy], [v.x, v.y]) < 16) { target = v; break; }
+        if (!target) for (const v of this.bacteria) if (dist([wx, wy], [v.x, v.y]) < 16) { target = v; break; }
         if (!target) for (const d of this.debris) if (dist([wx, wy], [d.x, d.y]) < 16) { target = d; break; }
         if (!target) for (const c of this.cancers) if (dist([wx, wy], [c.x, c.y]) < 14) { target = c; break; }
         if (!target) {
@@ -3544,6 +3804,7 @@ class Game {
     }
     for (const u of this.units) this.drawUnit(u);
     for (const v of this.virions) this.drawVirion(v);
+    for (const v of this.bacteria) this.drawBacterium(v);
     this.drawFx();
 
     if (sel_b && sel_b.rally) {
@@ -3718,6 +3979,27 @@ class Game {
     }
     if (v.slow > 0) drawCircle(ctx, "rgba(150,200,255,0.7)", [sx, sy], 12, 1);
   }
+  drawBacterium(v) {
+    if (!v.alive()) return;
+    const [sx, sy] = this.w2s(v.x, v.y);
+    if (!this.visible(sx, sy)) return;
+    let a = v.ang || 0;
+    const left = Math.cos(a) < 0;
+    if (left) a += Math.PI;
+    ctx.save(); ctx.translate(sx, sy); ctx.rotate(a);
+    drawCellSprite(ctx, "bacterium", 0, 0, SPRITE_R.bacterium,
+                   { t: this.time, phase: v.wander, flip: left, state: v.neutralized ? "tagged" : "" });
+    ctx.restore();
+    if (v.neutralized) {
+      ctx.save(); ctx.lineCap = "round";
+      for (const an of [this.time, this.time + 2.1, this.time + 4.2]) {
+        sprY(ctx, sx + Math.cos(an) * 14, sy + Math.sin(an) * 14, 4, an + Math.PI, [255, 214, 90], 0.5);
+      }
+      ctx.restore();
+    }
+    if (v.slow > 0) drawCircle(ctx, "rgba(150,200,255,0.7)", [sx, sy], 13, 1);
+    if (v.hp < v.max_hp) this.drawHp(sx, sy - 16, 16, v.hp / v.max_hp, BACT_COLOR);
+  }
   /** +1 facing right, -1 facing left: follows the last horizontal movement. */
   facing(e) {
     if (e._lx !== undefined) {
@@ -3849,7 +4131,10 @@ class Game {
     } else if (this.wave_active) {
       const inf = this.infectedCells().length;
       const free = this.virions.length + this.spawn_queue.length;
-      msg = `Wave ${this.wave}: ${free} virus, ${inf} infected`; col = RED;
+      const bac = this.bacteria.length + this.bact_queue.length;
+      msg = bac ? `Wave ${this.wave}: ${free} virus, ${inf} infected, ${bac} bacteria`
+                : `Wave ${this.wave}: ${free} virus, ${inf} infected`;
+      col = RED;
     } else {
       msg = `Wave ${this.wave + 1}`;
       col = WHITE;
@@ -3929,6 +4214,8 @@ class Game {
       if (w.strain) drawCircle(ctx, INFECT, [Math.trunc(mr.x + w.x * sc), Math.trunc(mr.y + w.y * sc)], 2);
     ctx.fillStyle = css(RED);
     for (const v of this.virions) ctx.fillRect(mr.x + v.x * sc - 1, mr.y + v.y * sc - 1, 2, 2);
+    ctx.fillStyle = css(BACT_COLOR);
+    for (const v of this.bacteria) ctx.fillRect(mr.x + v.x * sc - 1, mr.y + v.y * sc - 1, 2, 2);
     ctx.fillStyle = css([200, 50, 110]);
     for (const c of this.cancers) ctx.fillRect(mr.x + c.x * sc - 1, mr.y + c.y * sc - 1, 3, 3);
     const idxs = this.wave_active ? this.active_entries : this.next_entries;
@@ -3952,7 +4239,8 @@ class Game {
       this.text("Your own cells are dividing", this.f_bold, [230, 80, 130], x, y);
       this.text("out of control!", this.f_bold, [230, 80, 130], x, y + 20);
       this.text(`Rogue cells: ${this.cancers.length}`, this.f_small, ORANGE, x, y + 46);
-      this.text("They hide from SWAT cells.", this.f_small, GREY, x, y + 64);
+      if (this.cancer_immune) this.text("SWAT cells switched off!", this.f_small, RED, x, y + 64);
+      else this.text(`Round ${this.cancer_round + 1} - hiding from SWAT`, this.f_small, GREY, x, y + 64);
     } else if (this.wave_active && this.cur_strain) {
       const s = this.cur_strain;
       const ag = s.antigen;
@@ -4187,8 +4475,10 @@ class Game {
   drawLearnIcon(e, x, y, s) {
     const t = this.time;
     if (e.icon === "sprite") {
-      const k = e.key === "macrophage" ? 0.3 : e.key === "worker" || e.key === "virion" ? 0.24 : 0.28;
-      drawCellSprite(ctx, e.key, x, y + s * 0.04, Math.round(s * k), { t, phase: x * 0.01, color: FAMILY_COLORS.A });
+      // the bacterium's tail makes it ~4.3 radii long, so it is drawn smaller and shifted to centre the whole shape
+      const k = e.key === "macrophage" ? 0.3 : e.key === "bacterium" ? 0.12 : e.key === "worker" || e.key === "virion" ? 0.24 : 0.28;
+      const r = Math.round(s * k), dx = e.key === "bacterium" ? r * 0.85 : 0;
+      drawCellSprite(ctx, e.key, x + dx, y + s * 0.04, r, { t, phase: x * 0.01, color: FAMILY_COLORS.A });
     } else if (e.icon === "building") this.scIcon(e.key, x, y, Math.round(s * 0.8));
     else if (e.icon === "core") this.scCore(x, y + s * 0.05, Math.round(s * 0.62));
     else if (e.icon === "antibody") {
@@ -4240,10 +4530,10 @@ class Game {
       drawRect(ctx, hover ? YELLOW : PANEL_EDGE, tile, 2, 12);
       this.drawLearnIcon(e, tile.x + 64, tile.y + th / 2, 110);
       const tx = tile.x + 128, w = tile.w - 138;
-      let y = tile.y + 34;
+      let y = tile.y + 26;
       for (const ln of this.wrap(e.def.simple, this.f_bold, w).slice(0, 2)) { this.text(ln, this.f_bold, WHITE, tx, y); y += 21; }
       for (const ln of this.wrap(e.def.medical, this.f_small, w).slice(0, 3)) { this.text(ln, this.f_small, [170, 162, 186], tx, y); y += 17; }
-      this.text(tr("Read >"), this.f_small, hover ? YELLOW : CYAN, tx, tile.bottom - 26);
+      this.text(tr("Read >"), this.f_small, hover ? YELLOW : CYAN, tx, tile.bottom - 24);
       this.click_targets.push([tile, () => { this.learn_entry = e; }]);
     });
     this.text(trf("learnCount", `${items.length} entries - click one to learn about it.  Terms: `, items.length) +
@@ -4406,6 +4696,7 @@ class Game {
       });
     }
     const names = this.next_entries.map(i => this.entries[i].name).join(", ");
+    if (this.next_bacteria) this.text("Bacteria are coming in the next wave!", this.f_small, BACT_COLOR, WIDTH / 2, HEIGHT - 132, "c");
     this.text(trf("next", `Expected next strain: ${this.next_strain.antigen}  -  entering from: ${names}`,
                   this.next_strain.antigen, names),
               this.f_small, ORANGE, WIDTH / 2, HEIGHT - 110, "c");
@@ -4422,14 +4713,17 @@ class Game {
     if (cancer) {
       this.text(tr("CANCER TOOK OVER"), this.f_big, [235, 90, 140], r.centerx, r.y + 24, "c");
       const msg = "Some of your own cells mutated and began dividing out of control. They hid their " +
-        "ID cards from your SWAT cells, wore out your immune cells and stole the blood's sugar. " +
+        "ID cards from your SWAT cells, came back tougher each round, wore out your immune cells, stole the blood's sugar " +
+        "and finally switched your SWAT cells off for good. " +
         "No colony can win this one - in real life the immune system destroys many early cancers, " +
         "but sometimes it can't, and doctors have to help. Read more in Learn.";
       this.wrap(msg, this.f, r.w - 80).forEach((ln, i) => this.text(ln, this.f, WHITE, r.centerx, r.y + 78 + i * 22, "c"));
       top = r.y + 78 + this.wrap(msg, this.f, r.w - 80).length * 22 + 14;
     } else {
       this.text(tr("THE LYMPH NODE FELL"), this.f_big, RED, r.centerx, r.y + 24, "c");
-      this.text(trf("waveFell", `The virus overwhelmed your lymph node during wave ${this.wave}.`, this.wave), this.f, WHITE, r.centerx, r.y + 84, "c");
+      const bactKill = this.bacteria.length > this.virions.length + this.infectedCells().length;
+      this.text(bactKill ? trf("waveFellBact", `Bacteria overwhelmed your lymph node during wave ${this.wave}.`, this.wave)
+                         : trf("waveFell", `The virus overwhelmed your lymph node during wave ${this.wave}.`, this.wave), this.f, WHITE, r.centerx, r.y + 84, "c");
       top = r.y + 124;
     }
     const secs = Math.trunc(this.stats.time);
@@ -4744,6 +5038,7 @@ class Game {
     else if (name === "virus") this.sceneVirus(b, t);
     else if (name === "order") this.sceneOrder(b, t);
     else if (name === "damage") this.sceneDamage(b, t);
+    else if (name === "bacteria") this.sceneBacteria(b, t);
     else if (name === "adaptive") this.sceneAdaptive(b, t);
     else if (name === "controls") this.sceneControls(b, t);
     else if (name === "notes") this.sceneNotes(b);
@@ -5204,6 +5499,38 @@ class Game {
     });
   }
 
+  sceneBacteria(b, t) {
+    const split = b.x + b.w * 0.5;
+    drawLine(ctx, PANEL_EDGE, [split, b.y + 20], [split, b.bottom - 20], 1);
+    // left: one bacterium divides again and again
+    const P = 9, ph = (t % P) / P;
+    const stage = ph < 0.25 ? 0 : ph < 0.5 ? 1 : ph < 0.75 ? 2 : 3;   // 1, 2, 4, 8 bacteria
+    const n = 1 << stage;
+    const cx = b.x + (split - b.x) / 2, cy = b.y + 120;
+    for (let i = 0; i < n; i++) {
+      const col = i % 4, row = Math.floor(i / 4);
+      const x = cx + (col - (Math.min(n, 4) - 1) / 2) * 64;
+      const y = cy + (n > 4 ? (row - 0.5) * 58 : 0);
+      drawCellSprite(ctx, "bacterium", x, y, 16, { t, phase: i * 1.7 });
+    }
+    const labels = ["1. One bacterium", "2. It splits in two", "3. Doubling again and again!"];
+    const k = stage === 0 ? 0 : stage === 1 ? 1 : 2;
+    labels.forEach((s, i) => this.text(s, this.f, i === k ? YELLOW : [110, 104, 120], b.x + 40, b.y + 232 + i * 26));
+    this.scTag("Kill them early or they snowball!", cx, b.bottom - 44, ORANGE);
+    // right: who can fight them
+    const rx = split + 24, rw = b.right - 24 - rx;
+    this.text("WHO FIGHTS BACTERIA?", this.f_bold, WHITE, rx + rw / 2, b.y + 20, "c");
+    const rows = [["neutrophil", true, "Eat them - best against bacteria!"], ["macrophage", true, "Eat them"],
+                  ["bcell", true, "Tag them with antibodies"], ["nk", false, "Check infected cells, not bacteria"],
+                  ["killer_t", false, "Only attack infected cells"]];
+    rows.forEach(([key, ok, txt], i) => {
+      const y = b.y + 86 + i * 64;
+      this.scUnit(key, rx + 26, y, 11);
+      this.text(this.name(CELL_TYPES[key]), this.f_bold, WHITE, rx + 62, y - 20);
+      this.text(txt, this.f_small, ok ? GREEN : [220, 130, 130], rx + 62, y + 2);
+      drawCircle(ctx, ok ? GREEN : RED, [rx + rw - 12, y - 8], 7);
+    });
+  }
   sceneNotes(b) {
     let y = b.y + 22;
     this.text("The game simplifies real biology. Be honest with your class:", this.f_bold, YELLOW, b.x + 30, y);
